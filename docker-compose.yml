@@ -18,10 +18,10 @@ services:
     restart: unless-stopped
   app:
     # LOCAL DEVELOPMENT: Build from local Dockerfile
-    # build:
+    #build:
     #     context: ./app
     #     dockerfile: Dockerfile
-    # image: triviaforge:local
+    #image: triviaforge:local
 
     # PRODUCTION/DOCKER HUB: Comment above and uncomment below
     image: emancodetemplar/triviaforge:latest
@@ -55,7 +55,9 @@ services:
       SOCKET_ANSWER_LIMIT: ${SOCKET_ANSWER_LIMIT:-300}
     volumes:
       - uploads:/app/public/uploads
+      - backups:/app/backups
     restart: unless-stopped
 volumes:
   pgdata:
   uploads:
+  backups:

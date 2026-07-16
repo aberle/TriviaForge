@@ -134,6 +134,10 @@
           <ServerSettingsPanel />
           <ThemeSettingsPanel />
         </div>
+        <hr class="settings-section-divider" />
+        <BackupPanel />
+        <hr class="settings-section-divider" />
+        <QuizExportImportPanel />
       </div>
 
       <!-- User Management Tab -->
@@ -468,6 +472,8 @@ import SessionFilters from '@/components/admin/SessionFilters.vue'
 import QuizOptionsPanel from '@/components/admin/QuizOptionsPanel.vue'
 import ThemeSettingsPanel from '@/components/admin/ThemeSettingsPanel.vue'
 import ServerSettingsPanel from '@/components/admin/ServerSettingsPanel.vue'
+import BackupPanel from '@/components/admin/BackupPanel.vue'
+import QuizExportImportPanel from '@/components/admin/QuizExportImportPanel.vue'
 import UserManagementPanel from '@/components/admin/UserManagementPanel.vue'
 import BannedNamesPanel from '@/components/admin/BannedNamesPanel.vue'
 import AboutPanel from '@/components/admin/AboutPanel.vue'
@@ -2557,6 +2563,13 @@ onUnmounted(() => {
 .settings-management {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+.settings-section-divider {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 2rem 1rem;
+  opacity: 0.5;
 }
 
 .settings-grid {

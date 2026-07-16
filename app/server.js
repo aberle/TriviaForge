@@ -25,6 +25,9 @@ import tagRoutes from './src/routes/tag.routes.js';
 import questionBankRoutes from './src/routes/questionBank.routes.js';
 import soloRoutes from './src/routes/solo.routes.js';
 import statsRoutes from './src/routes/stats.routes.js';
+import backupRoutes from './src/routes/backup.routes.js';
+import { createBackup } from './src/services/backup.service.js';
+import exportRoutes from './src/routes/export.routes.js';
 import { requireAuth, requireAdmin } from './src/middleware/auth.js';
 import { errorHandler, notFoundHandler } from './src/middleware/errorHandler.js';
 import { env } from './src/config/environment.js';
@@ -383,6 +386,12 @@ app.use('/api/solo', soloRoutes);
 
 // Player stats routes (authenticated players) - v5.8.0
 app.use('/api/stats', statsRoutes);
+
+// Database backup routes (admin only) - v5.12.0
+app.use('/api/admin/backups', backupRoutes);
+
+// Quiz/question library export & import routes (admin only) - v5.12.0
+app.use('/api/admin/export', exportRoutes);
 
 // --------------------
 // Admin: Memory Monitoring Endpoint (v5.5.0)
@@ -1461,6 +1470,39 @@ const startCleanupScheduler = () => {
 
 // Start cleanup scheduler when server starts (called after io is initialized)
 startCleanupScheduler();
+
+// Daily backup scheduler — fires at 2:00 AM server time, then every 24 hours
+const startBackupScheduler = () => {
+  const scheduleNextBackup = () => {
+    const now = new Date();
+    const next2am = new Date(now);
+    next2am.setHours(2, 0, 0, 0);
+    if (next2am <= now) next2am.setDate(next2am.getDate() + 1);
+    const msUntil2am = next2am - now;
+
+    console.log(`[BACKUP] Scheduled backup in ${Math.round(msUntil2am / 1000 / 60)} minutes (next 2:00 AM)`);
+
+    setTimeout(async () => {
+      try {
+        await createBackup('scheduled');
+      } catch (err) {
+        console.error('[BACKUP] Scheduled backup failed:', err.message);
+      }
+      // Schedule again for the following day
+      setInterval(async () => {
+        try {
+          await createBackup('scheduled');
+        } catch (err) {
+          console.error('[BACKUP] Scheduled backup failed:', err.message);
+        }
+      }, 24 * 60 * 60 * 1000);
+    }, msUntil2am);
+  };
+
+  scheduleNextBackup();
+};
+
+startBackupScheduler();
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
