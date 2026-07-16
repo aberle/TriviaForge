@@ -767,7 +767,7 @@ Add notification to presenter when all connected players have answered the curre
 - [ ] Database backup/restore strategy
 - [x] Database migration versioning - v5.1.0 ✅
 - [ ] Performance monitoring and query optimization
-- [ ] GitHub Actions - Docker Auto-Build & Push to Docker Hub
+- [x] GitHub Actions - Docker Auto-Build & Push to Docker Hub - v5.11.0 ✅
 
 ### Security & User Management
 - [ ] Implement Phase 1 security fixes from SECURITY-AUDIT.md (if not done)
@@ -776,7 +776,7 @@ Add notification to presenter when all connected players have answered the curre
 - [x] Multi-Admin Support System (isolated instances) - v5.0.0 ✅
 - [x] Two-Factor Authentication (TOTP) for admins - v5.2.0 ✅
 - [x] Remember device for 2FA (30-day trusted devices) - v5.9.0 ✅
-- [ ] Email verification for admin accounts
+- [ ] Email verification for admin accounts *(on pause — email hosting not yet configured)*
 
 ### Question Types & Media
 - [x] True/False question type - v5.0.0 ✅
@@ -790,8 +790,8 @@ Add notification to presenter when all connected players have answered the curre
 - [x] Player-facing statistics dashboard with charts - v5.8.0 ✅
 
 ### Bug Investigations
-- [ ] Incorrect Answer Notification Bug (may be fixed by reconnection changes - needs testing)
-- [ ] Socket.IO performance with large sessions (200+ concurrent players)
+- [x] Incorrect Answer Notification Bug — considered resolved; not observed since reconnection improvements ✅
+- [ ] Socket.IO performance with large sessions (200+ concurrent players) *(eventual — low priority)*
 
 ---
 
@@ -863,5 +863,5 @@ Before marking a task as complete:
 
 **Archive:** See [archive/TODO-2025.md](archive/TODO-2025.md) for historical tasks and completed features from 2025.
 
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-07-15
 **Maintained By:** TriviaForge Development Team

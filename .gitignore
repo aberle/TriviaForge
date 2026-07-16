@@ -48,6 +48,8 @@ desktop.ini
 DEV-SUMMARY.md
 PHASE-*.md
 *-PLAN.md
+CLAUDE.md
+AGENTS.md
 
 # LOCAL-AI folder - AI assistant onboarding, memory, and internal docs (DO NOT COMMIT)
 LOCAL-AI/
@@ -63,3 +65,10 @@ app/dist/
 
 # Git worktrees
 .worktrees/
+
+# Graphify knowledge graph outputs
+graphify-out/
+.graphify_python
+
+# Local MCP server config
+.mcp.json
