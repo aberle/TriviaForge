@@ -1,6 +1,9 @@
 FROM node:22-alpine
 WORKDIR /app
 
+# postgresql-client provides pg_dump/psql for database backup and restore
+RUN apk add --no-cache postgresql-client
+
 # Install dependencies
 COPY package.json package-lock.json* ./
 RUN npm install

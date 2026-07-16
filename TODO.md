@@ -764,7 +764,7 @@ Add notification to presenter when all connected players have answered the curre
 > **Note:** These are planned features but not immediate priorities. See archived TODO-2025.md for detailed specifications.
 
 ### Database & Infrastructure
-- [ ] Database backup/restore strategy
+- [x] Database backup/restore strategy - v5.12.0 ✅
 - [x] Database migration versioning - v5.1.0 ✅
 - [ ] Performance monitoring and query optimization
 - [x] GitHub Actions - Docker Auto-Build & Push to Docker Hub - v5.11.0 ✅
@@ -814,8 +814,9 @@ Add notification to presenter when all connected players have answered the curre
 14. **v5.10.0:** Unified Navbar Redesign ✅ COMPLETE
 15. **v5.10.5:** Auto-Pilot Fixes & Connection Optimization ✅ COMPLETE
 16. **v5.11.0:** PDF Export & GitHub Actions CI/CD ✅ COMPLETE
-17. **Next:** Player Management enhancements, Ban system, branding/logo
-18. **Backlog:** Enhanced security audits, PDF branding header (pending logo)
+17. **v5.12.0:** Database backup/restore + Quiz library export/import ✅ COMPLETE
+18. **Next:** Player Management enhancements, Ban system, branding/logo
+19. **Backlog:** Enhanced security audits, PDF branding header (pending logo)
 
 ### Testing Priorities
 - Mobile browser testing (iOS Safari, Chrome Mobile, Firefox Mobile)
@@ -845,6 +846,7 @@ Add notification to presenter when all connected players have answered the curre
 - **v5.10.0 (Released):** Unified Navbar Redesign - shared CSS design system, admin links on player pages, consistent styling ✅
 - **v5.10.5 (Released):** Auto-Pilot fixes (live question start, resume, double-reveal, banner reset), Display ghost user prevention, connection optimization (removed redundant heartbeat, reduced pingTimeout) ✅
 - **v5.11.0 (Released):** Rich PDF session export (podium, leaderboard, per-question breakdown, embedded images with WebP conversion), bulk PDF as ZIP, GitHub Actions CI/CD (auto Docker push on version tag) ✅
+- **v5.12.0 (Released):** Database backup & restore (scheduled daily pg_dump, admin UI, version-gated restore), quiz library JSON export/import, flat questions CSV export ✅
 
 ---
 
@@ -863,5 +865,5 @@ Before marking a task as complete:
 
 **Archive:** See [archive/TODO-2025.md](archive/TODO-2025.md) for historical tasks and completed features from 2025.
 
-**Last Updated:** 2026-07-15
+**Last Updated:** 2026-07-15 (v5.12.0)
 **Maintained By:** TriviaForge Development Team
