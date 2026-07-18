@@ -13,6 +13,7 @@ import { createWriteStream } from 'fs';
 import { promises as fs } from 'fs';
 import { createGzip } from 'zlib';
 import path from 'path';
+import crypto from 'crypto';
 import { query } from '../config/database.js';
 import { env } from '../config/environment.js';
 import { VERSION } from '../config/version.js';
@@ -23,8 +24,11 @@ const MAX_BACKUPS = 10;
 
 const COUNTED_TABLES = ['quizzes', 'questions', 'game_sessions', 'game_participants', 'users'];
 
-// Allowlist: only the exact format we generate — triviaforge-YYYY-MM-DDTHH-MM-SS
-const BACKUP_NAME_RE = /^triviaforge-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/;
+// Allowlist: the format we generate — triviaforge-YYYY-MM-DDTHH-MM-SS, optionally
+// with a short random suffix (used for imported backups to avoid name collisions)
+const BACKUP_NAME_RE = /^triviaforge-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(-[a-f0-9]{4})?$/;
+
+const GZIP_MAGIC = Buffer.from([0x1f, 0x8b]);
 
 function validateBackupName(name) {
   if (!name || !BACKUP_NAME_RE.test(name)) {
@@ -151,6 +155,51 @@ export async function createBackup(trigger = 'manual') {
 }
 
 /**
+ * Import a previously-downloaded .sql.gz backup file so it can be restored.
+ * Used when a container/volume was rebuilt from scratch and the "backups" volume
+ * (which normally holds prior backups) no longer contains anything to restore from.
+ * The original app version and row counts are unknown, so the resulting entry is
+ * marked as imported and always passes the restore version-gate.
+ * @param {Buffer} fileBuffer - raw contents of the uploaded .sql.gz file
+ * @returns {Promise<Object>} backup metadata
+ */
+export async function importBackup(fileBuffer) {
+  if (!fileBuffer || fileBuffer.length === 0) {
+    throw new BadRequestError('No file uploaded');
+  }
+  if (!fileBuffer.subarray(0, 2).equals(GZIP_MAGIC)) {
+    throw new BadRequestError('File is not a valid gzip archive (expected a .sql.gz backup)');
+  }
+
+  await ensureBackupDir();
+
+  const timestamp = new Date().toISOString();
+  const slug = timestampToSlug(timestamp);
+  const suffix = crypto.randomBytes(2).toString('hex');
+  const name = `triviaforge-${slug}-${suffix}`;
+  const sqlGzPath = path.join(BACKUP_DIR, `${name}.sql.gz`);
+  const metaPath = path.join(BACKUP_DIR, `${name}.meta.json`);
+
+  await fs.writeFile(sqlGzPath, fileBuffer);
+
+  const meta = {
+    name,
+    appVersion: null,
+    exportedAt: timestamp,
+    trigger: 'imported',
+    sizeBytes: fileBuffer.length,
+    rowCounts: null,
+    migrationsApplied: [],
+    imported: true,
+  };
+
+  await fs.writeFile(metaPath, JSON.stringify(meta, null, 2));
+
+  console.log(`[BACKUP] Imported ${name} (${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+  return meta;
+}
+
+/**
  * List all available backups, newest first.
  * @returns {Promise<Array>}
  */
@@ -245,7 +294,7 @@ export async function restoreBackup(name) {
 
   const sqlGzPath = await getBackupFilePath(name);
 
-  console.log(`[BACKUP] Restore initiated — source: ${name} (v${meta.appVersion}), current: v${VERSION}`);
+  console.log(`[BACKUP] Restore initiated — source: ${name} (${meta.appVersion ? `v${meta.appVersion}` : 'version unknown'}), current: v${VERSION}`);
 
   // Terminate active connections so psql can restore cleanly
   try {
@@ -302,6 +351,7 @@ export async function pruneOldBackups() {
 export default {
   BACKUP_DIR,
   createBackup,
+  importBackup,
   listBackups,
   getBackupMeta,
   getBackupFilePath,

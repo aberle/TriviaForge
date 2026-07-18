@@ -7,6 +7,7 @@
 
 import * as backupService from '../services/backup.service.js';
 import { sendSuccess } from '../utils/responses.js';
+import { BadRequestError } from '../utils/errors.js';
 
 /**
  * GET /api/admin/backups
@@ -29,6 +30,23 @@ export async function triggerBackup(req, res, next) {
   try {
     const meta = await backupService.createBackup('manual');
     sendSuccess(res, meta, 'Backup created successfully');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/admin/backups/import
+ * Import a previously-downloaded .sql.gz backup file (e.g. after a container/volume
+ * rebuild wiped the backups volume) so it appears in the list and can be restored.
+ */
+export async function importBackup(req, res, next) {
+  try {
+    if (!req.file) {
+      throw new BadRequestError('No file uploaded');
+    }
+    const meta = await backupService.importBackup(req.file.buffer);
+    sendSuccess(res, meta, 'Backup imported successfully');
   } catch (err) {
     next(err);
   }

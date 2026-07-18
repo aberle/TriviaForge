@@ -13,6 +13,43 @@
       Download a backup to store it externally, or restore to roll back the entire database to a previous state.
     </p>
 
+    <!-- Import backup file -->
+    <div class="import-zone-wrapper">
+      <div
+        class="drop-zone"
+        :class="{ dragover: isDragging, 'has-file': importFile }"
+        @dragover.prevent="isDragging = true"
+        @dragleave.prevent="isDragging = false"
+        @drop.prevent="onDrop"
+        @click="$refs.backupFileInput.click()"
+      >
+        <input ref="backupFileInput" type="file" accept=".gz" class="hidden-input" @change="onFileChange" />
+        <template v-if="!importFile">
+          <AppIcon name="file-up" size="lg" />
+          <p>
+            Rebuilt the container from scratch? Drop a downloaded <code>.sql.gz</code> backup here to bring it back
+            into the list below, or click to browse.
+          </p>
+        </template>
+        <template v-else>
+          <AppIcon name="file-check" size="lg" />
+          <p class="file-name">{{ importFile.name }}</p>
+          <button class="clear-btn" @click.stop="clearImportFile">
+            <AppIcon name="x" size="sm" /> Remove
+          </button>
+        </template>
+      </div>
+      <button
+        v-if="importFile"
+        class="backup-btn import-confirm-btn"
+        @click="doImportBackup"
+        :disabled="importing"
+      >
+        <AppIcon :name="importing ? 'loader' : 'upload'" size="sm" :class="{ spinning: importing }" />
+        {{ importing ? 'Importing...' : 'Import Backup' }}
+      </button>
+    </div>
+
     <!-- Status message -->
     <div v-if="statusMsg" class="status-msg" :class="statusType">
       <AppIcon :name="statusType === 'success' ? 'check-circle' : 'alert-circle'" size="sm" />
@@ -54,7 +91,7 @@
         <tbody>
           <tr v-for="backup in backups" :key="backup.name">
             <td class="timestamp">{{ formatTimestamp(backup.exportedAt) }}</td>
-            <td class="version">v{{ backup.appVersion }}</td>
+            <td class="version">{{ backup.appVersion ? `v${backup.appVersion}` : 'unknown' }}</td>
             <td>
               <span class="trigger-badge" :class="backup.trigger">{{ backup.trigger }}</span>
             </td>
@@ -95,7 +132,7 @@
           </div>
           <div class="info-row">
             <span class="info-label">App version</span>
-            <span class="info-value">v{{ restoreTarget.appVersion }}</span>
+            <span class="info-value">{{ restoreTarget.appVersion ? `v${restoreTarget.appVersion}` : 'unknown' }}</span>
           </div>
           <div class="info-row" v-if="restoreTarget.rowCounts">
             <span class="info-label">Contents</span>
@@ -109,6 +146,14 @@
             <strong>This will wipe and replace the entire current database.</strong>
             The server will be offline for approximately 10–15 seconds while the restore runs,
             then restart automatically. All active quiz sessions will be disconnected.
+          </div>
+        </div>
+
+        <div class="restore-warning" v-if="restoreTarget.imported">
+          <AppIcon name="alert-triangle" size="md" />
+          <div>
+            <strong>This backup was imported from a file, not created on this instance.</strong>
+            Its origin app version and contents could not be verified — only restore it if you trust the source.
           </div>
         </div>
 
@@ -129,7 +174,7 @@ import { ref, onMounted } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { useApi } from '@/composables/useApi.js'
 
-const { get, post, delete: deleteRequest } = useApi()
+const { get, post, delete: deleteRequest, upload } = useApi()
 
 const backups = ref([])
 const loading = ref(false)
@@ -139,6 +184,10 @@ const restoring = ref(false)
 const restoreTarget = ref(null)
 const statusMsg = ref('')
 const statusType = ref('success')
+const isDragging = ref(false)
+const importFile = ref(null)
+const importing = ref(false)
+const backupFileInput = ref(null)
 let statusTimer = null
 
 const showStatus = (msg, type = 'success') => {
@@ -216,6 +265,39 @@ const doDelete = async (backup) => {
     showStatus('Backup deleted.')
   } catch (err) {
     showStatus(err.response?.data?.error?.message || err.message || 'Delete failed', 'error')
+  }
+}
+
+const loadImportFile = (file) => {
+  if (!file || !file.name.endsWith('.gz')) {
+    showStatus('Please select a .sql.gz backup file', 'error')
+    return
+  }
+  importFile.value = file
+}
+
+const onFileChange = (e) => loadImportFile(e.target.files[0])
+const onDrop = (e) => { isDragging.value = false; loadImportFile(e.dataTransfer.files[0]) }
+
+const clearImportFile = () => {
+  importFile.value = null
+  if (backupFileInput.value) backupFileInput.value.value = ''
+}
+
+const doImportBackup = async () => {
+  if (!importFile.value) return
+  importing.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', importFile.value)
+    const response = await upload('/api/admin/backups/import', formData)
+    backups.value = [response.data.data, ...backups.value].slice(0, 10)
+    showStatus('Backup imported — it now appears in the list below and can be restored.')
+    clearImportFile()
+  } catch (err) {
+    showStatus(err.response?.data?.error?.message || err.message || 'Import failed', 'error')
+  } finally {
+    importing.value = false
   }
 }
 
@@ -315,6 +397,60 @@ onMounted(fetchBackups)
   border: 1px solid var(--error-color);
 }
 
+/* Import drop zone */
+.import-zone-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.drop-zone {
+  border: 2px dashed var(--border-color);
+  border-radius: 10px;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+  font-size: 0.9rem;
+}
+
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--primary-color);
+  background: var(--bg-overlay-10);
+}
+
+.drop-zone.has-file {
+  border-color: var(--success-color);
+  color: var(--success-color);
+}
+
+.drop-zone p { margin: 0; max-width: 480px; }
+.drop-zone code { font-size: 0.85rem; background: var(--bg-tertiary); padding: 0.1rem 0.3rem; border-radius: 3px; }
+
+.hidden-input { display: none; }
+
+.file-name { font-weight: 600; word-break: break-all; }
+
+.clear-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  border: 1px solid var(--success-color);
+  border-radius: 5px;
+  color: var(--success-color);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.import-confirm-btn { align-self: flex-start; }
+
 /* Error / loading / empty */
 .error-box,
 .loading-box,
@@ -401,6 +537,11 @@ onMounted(fetchBackups)
 .trigger-badge.manual {
   background: var(--success-bg-10, rgba(34,197,94,0.1));
   color: var(--success-color);
+}
+
+.trigger-badge.imported {
+  background: var(--warning-bg-10, rgba(234,179,8,0.1));
+  color: var(--warning-color);
 }
 
 /* Row action buttons */

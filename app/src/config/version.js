@@ -4,9 +4,9 @@
  * Update this file to change version across the entire application
  */
 
-export const VERSION = '5.12.0'
-export const VERSION_NAME = 'Database Backup & Quiz Library Export'
-export const RELEASE_DATE = '2026-07-15'
+export const VERSION = '5.14.0'
+export const VERSION_NAME = 'Backup File Import'
+export const RELEASE_DATE = '2026-07-18'
 
 export default {
   VERSION,

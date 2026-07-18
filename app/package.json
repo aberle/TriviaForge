@@ -1,6 +1,6 @@
 {
   "name": "trivia-app",
-  "version": "5.11.1",
+  "version": "5.14.0",
   "type": "module",
   "main": "server.js",
   "scripts": {

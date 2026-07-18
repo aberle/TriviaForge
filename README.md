@@ -47,6 +47,8 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 - **Server Settings**: Configure the server URL for QR codes directly from the admin panel (no container rebuild needed)
 - **PDF Export**: Export richly formatted session reports as PDF — includes podium leaderboard, full player rankings, per-question accuracy chart, and detailed question breakdown with embedded images
 - **Bulk PDF Export**: Select multiple sessions and download a ZIP archive of individual PDF reports
+- **Database Backups**: Automatic daily backups (10 most recent retained) plus on-demand manual backups, with download, delete, and one-click restore. Backup files can also be re-imported into a freshly rebuilt instance (e.g. after a container/volume rebuild) so they're restorable even without the original `backups` volume
+- **Quiz Library Export/Import**: Export the full quiz library (or a single quiz) as JSON, or all questions as CSV, for sharing between instances or backing up separately from the full database
 
 <!-- Screenshot Placeholder: Admin Dashboard -->
 ![Admin Dashboard](screenshots/admin-dashboard.png?v=202602)

@@ -1,8 +1,8 @@
 # TriviaForge - Active Development Tasks (2026)
 
 > **Purpose:** Current development priorities and pending tasks
-> **Last Updated:** 2026-04-05
-> **Version:** v5.10.5
+> **Last Updated:** 2026-07-18
+> **Version:** v5.14.0
 
 ---
 
@@ -765,6 +765,7 @@ Add notification to presenter when all connected players have answered the curre
 
 ### Database & Infrastructure
 - [x] Database backup/restore strategy - v5.12.0 ✅
+- [x] Backup file import — restore from a downloaded .sql.gz on a freshly rebuilt instance, since restore previously only worked on backups already present in the `backups` volume - v5.14.0 ✅
 - [x] Database migration versioning - v5.1.0 ✅
 - [ ] Performance monitoring and query optimization
 - [x] GitHub Actions - Docker Auto-Build & Push to Docker Hub - v5.11.0 ✅
