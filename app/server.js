@@ -523,7 +523,7 @@ app.get('/api/options', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT setting_key, setting_value FROM app_settings
-       WHERE setting_key IN ('answer_display_time', 'default_question_timer', 'default_reveal_delay', 'server_url')`
+       WHERE setting_key IN ('answer_display_time', 'default_question_timer', 'default_reveal_delay', 'server_url', 'short_answer_match_threshold')`
     );
 
     // Build options object from results
@@ -531,6 +531,8 @@ app.get('/api/options', requireAdmin, async (req, res) => {
     for (const row of result.rows) {
       if (row.setting_key === 'server_url') {
         settings[row.setting_key] = row.setting_value;
+      } else if (row.setting_key === 'short_answer_match_threshold') {
+        settings[row.setting_key] = parseFloat(row.setting_value);
       } else {
         settings[row.setting_key] = parseInt(row.setting_value);
       }
@@ -541,19 +543,20 @@ app.get('/api/options', requireAdmin, async (req, res) => {
       defaultQuestionTimer: settings.default_question_timer || 30,
       defaultRevealDelay: settings.default_reveal_delay || 5,
       serverUrl: settings.server_url || '',
+      shortAnswerMatchThreshold: settings.short_answer_match_threshold ?? 0.85,
       detectedIp: LOCAL_IP,
       activeServerUrl: getServerUrl(),
     });
   } catch (err) {
     console.error('Error fetching options:', err);
-    res.json({ answerDisplayTime: 30, defaultQuestionTimer: 30, defaultRevealDelay: 5 }); // Return defaults on error
+    res.json({ answerDisplayTime: 30, defaultQuestionTimer: 30, defaultRevealDelay: 5, shortAnswerMatchThreshold: 0.85 }); // Return defaults on error
   }
 });
 
 // Save quiz options (to database) - v5.4.0: includes auto-mode timer defaults
 app.post('/api/options', requireAdmin, async (req, res) => {
   try {
-    const { answerDisplayTime, defaultQuestionTimer, defaultRevealDelay, serverUrl } = req.body;
+    const { answerDisplayTime, defaultQuestionTimer, defaultRevealDelay, serverUrl, shortAnswerMatchThreshold } = req.body;
 
     // Validate input
     if (answerDisplayTime !== undefined && (answerDisplayTime < 5 || answerDisplayTime > 300)) {
@@ -564,6 +567,9 @@ app.post('/api/options', requireAdmin, async (req, res) => {
     }
     if (defaultRevealDelay !== undefined && (defaultRevealDelay < 2 || defaultRevealDelay > 30)) {
       return res.status(400).json({ error: 'Reveal delay must be between 2 and 30 seconds' });
+    }
+    if (shortAnswerMatchThreshold !== undefined && (shortAnswerMatchThreshold < 0.5 || shortAnswerMatchThreshold > 1)) {
+      return res.status(400).json({ error: 'Short answer match threshold must be between 0.5 and 1' });
     }
     if (serverUrl !== undefined && serverUrl !== '') {
       try {
@@ -586,6 +592,9 @@ app.post('/api/options', requireAdmin, async (req, res) => {
     }
     if (serverUrl !== undefined) {
       settingsToUpdate.push({ key: 'server_url', value: serverUrl, desc: 'Server URL for QR codes (leave empty to auto-detect from IP)' });
+    }
+    if (shortAnswerMatchThreshold !== undefined) {
+      settingsToUpdate.push({ key: 'short_answer_match_threshold', value: shortAnswerMatchThreshold, desc: 'Minimum similarity (0-1) for auto-grading open-ended answers' });
     }
 
     for (const setting of settingsToUpdate) {
@@ -890,7 +899,7 @@ const io = new Server(server, {
 // Live Rooms Logic with Session Recording (Phase 3: Using RoomService)
 // --------------------
 // REMOVED: const liveRooms = {}; - Now using roomService.liveRooms
-let quizOptions = { answerDisplayTime: 30, serverUrl: '' }; // Default options
+let quizOptions = { answerDisplayTime: 30, serverUrl: '', shortAnswerMatchThreshold: 0.85 }; // Default options
 
 // Periodic Auto-Save Configuration (Phase 3: Using SessionService)
 // REMOVED: const AUTO_SAVE_INTERVAL = 120000; - Now in sessionService
@@ -910,7 +919,7 @@ function stopAutoSave(roomCode) {
 async function loadQuizOptions() {
   try {
     const result = await pool.query(
-      "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('answer_display_time', 'server_url')"
+      "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('answer_display_time', 'server_url', 'short_answer_match_threshold')"
     );
 
     if (result.rows.length > 0) {
@@ -919,6 +928,8 @@ async function loadQuizOptions() {
           quizOptions.answerDisplayTime = parseInt(row.setting_value);
         } else if (row.setting_key === 'server_url') {
           quizOptions.serverUrl = row.setting_value || '';
+        } else if (row.setting_key === 'short_answer_match_threshold') {
+          quizOptions.shortAnswerMatchThreshold = parseFloat(row.setting_value);
         }
       }
       console.log('📋 Quiz options loaded from database:', quizOptions);

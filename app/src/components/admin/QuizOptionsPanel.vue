@@ -28,6 +28,24 @@
         <button @click="$emit('setQuickTimeout', 120)" class="btn-quick">2min</button>
       </div>
 
+      <h3>Short Answer Match Threshold</h3>
+      <p class="option-description">
+        How closely a player's typed answer must match an accepted answer to be graded correct
+        (higher = stricter). Applies to Open-Ended / Short Answer questions.
+      </p>
+
+      <div class="timeout-input-wrapper">
+        <input
+          :value="shortAnswerMatchThreshold"
+          @input="$emit('update:shortAnswerMatchThreshold', Number($event.target.value))"
+          type="number"
+          min="0.5"
+          max="1"
+          step="0.05"
+        />
+        <span>(0.5 - 1.0)</span>
+      </div>
+
       <button @click="$emit('saveOptions')" class="btn-primary">Save Options</button>
 
       <div v-if="saveMessage" :class="['options-save-msg', saveMessageType]">
@@ -40,11 +58,12 @@
 <script setup>
 defineProps({
   answerDisplayTime: { type: Number, required: true },
+  shortAnswerMatchThreshold: { type: Number, required: true },
   saveMessage: { type: String, default: '' },
   saveMessageType: { type: String, default: 'success' }
 });
 
-defineEmits(['update:answerDisplayTime', 'setQuickTimeout', 'saveOptions']);
+defineEmits(['update:answerDisplayTime', 'update:shortAnswerMatchThreshold', 'setQuickTimeout', 'saveOptions']);
 </script>
 
 <style scoped>

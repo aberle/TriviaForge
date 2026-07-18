@@ -121,6 +121,7 @@
       <div v-if="activeTab === 'options'" class="tab-content options-management">
         <QuizOptionsPanel
           v-model:answerDisplayTime="answerDisplayTime"
+          v-model:shortAnswerMatchThreshold="shortAnswerMatchThreshold"
           :saveMessage="optionsSaveMessage"
           :saveMessageType="optionsSaveMessageType"
           @setQuickTimeout="setQuickTimeout"
@@ -578,6 +579,7 @@ const bulkDeleteSessionIds = ref([])
 
 // Options
 const answerDisplayTime = ref(30)
+const shortAnswerMatchThreshold = ref(0.85)
 const optionsSaveMessage = ref('')
 const optionsSaveMessageType = ref('success')
 
@@ -1547,6 +1549,7 @@ const loadOptions = async () => {
   try {
     const response = await get('/api/options')
     answerDisplayTime.value = response.data.answerDisplayTime || 30
+    shortAnswerMatchThreshold.value = response.data.shortAnswerMatchThreshold ?? 0.85
   } catch (err) {
     console.error('Error loading options:', err)
   }
@@ -1558,7 +1561,7 @@ const setQuickTimeout = (seconds) => {
 
 const saveQuizOptions = async () => {
   try {
-    await post('/api/options', { answerDisplayTime: answerDisplayTime.value })
+    await post('/api/options', { answerDisplayTime: answerDisplayTime.value, shortAnswerMatchThreshold: shortAnswerMatchThreshold.value })
     optionsSaveMessage.value = 'Options saved successfully'
     optionsSaveMessageType.value = 'success'
     setTimeout(() => { optionsSaveMessage.value = '' }, 3000)
