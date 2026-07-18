@@ -783,7 +783,12 @@ app.get('/api/player/progress/:roomCode', async (req, res) => {
       // Determine if answer was correct (only if revealed)
       let isCorrect = false;
       if (wasRevealed && playerChoice !== null) {
-        isCorrect = playerChoice === question.correctChoice;
+        if (question.type === 'short_answer') {
+          const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
+          isCorrect = matchShortAnswer(playerChoice, question.acceptedAnswers || [], threshold).isCorrect;
+        } else {
+          isCorrect = playerChoice === question.correctChoice;
+        }
       }
 
       progress.questionHistory.push({
@@ -833,7 +838,11 @@ app.get('/api/room/progress/:roomCode', async (req, res) => {
 
             if (playerChoice !== null) {
               answeredCount++;
-              if (playerChoice === question.correctChoice) {
+              const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
+              const isCorrect = question.type === 'short_answer'
+                ? matchShortAnswer(playerChoice, question.acceptedAnswers || [], threshold).isCorrect
+                : playerChoice === question.correctChoice;
+              if (isCorrect) {
                 correctCount++;
               }
             }
