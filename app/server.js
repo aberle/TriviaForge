@@ -1560,15 +1560,22 @@ io.on('connection', (socket) => {
         filename: quizFilename,
         title: quiz.title,
         description: quiz.description,
-        questions: quiz.questions.map(q => ({
-          id: q.id,
-          text: q.text,
-          type: q.type || 'multiple_choice',
-          imageUrl: q.imageUrl || null,
-          imageType: q.imageType || null,
-          choices: q.choices.map(c => c.text),
-          correctChoice: q.choices.findIndex(c => c.isCorrect)
-        }))
+        questions: quiz.questions.map(q => {
+          const type = q.type || 'multiple_choice';
+          const base = {
+            id: q.id,
+            text: q.text,
+            type,
+            imageUrl: q.imageUrl || null,
+            imageType: q.imageType || null,
+            choices: q.choices.map(c => c.text),
+            correctChoice: type === 'short_answer' ? -1 : q.choices.findIndex(c => c.isCorrect)
+          };
+          if (type === 'short_answer') {
+            base.acceptedAnswers = q.choices.map((c, idx) => ({ id: c.id ?? idx, answer_text: c.text }));
+          }
+          return base;
+        })
       };
 
       // Check if room already exists (presenter reconnecting)
@@ -1721,15 +1728,22 @@ io.on('connection', (socket) => {
         filename: `quiz_${session.quiz_id}.json`,
         title: quiz.title,
         description: quiz.description,
-        questions: quiz.questions.map(q => ({
-          id: q.id,
-          text: q.text,
-          type: q.type || 'multiple_choice',
-          imageUrl: q.imageUrl || null,
-          imageType: q.imageType || null,
-          choices: q.choices.map(c => c.text),
-          correctChoice: q.choices.findIndex(c => c.isCorrect)
-        }))
+        questions: quiz.questions.map(q => {
+          const type = q.type || 'multiple_choice';
+          const base = {
+            id: q.id,
+            text: q.text,
+            type,
+            imageUrl: q.imageUrl || null,
+            imageType: q.imageType || null,
+            choices: q.choices.map(c => c.text),
+            correctChoice: type === 'short_answer' ? -1 : q.choices.findIndex(c => c.isCorrect)
+          };
+          if (type === 'short_answer') {
+            base.acceptedAnswers = q.choices.map((c, idx) => ({ id: c.id ?? idx, answer_text: c.text }));
+          }
+          return base;
+        })
       };
 
       // Load participants and their answers from database
