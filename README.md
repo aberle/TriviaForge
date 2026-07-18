@@ -2,7 +2,7 @@
 
 A production-ready, real-time interactive trivia game platform built with **Vue 3**, **Socket.IO**, and **PostgreSQL**. Designed for educators, event organizers, and trivia enthusiasts with robust connection stability, persistent player sessions, and estimated capacity for 50+ concurrent players.
 
-**Latest Release**: v5.11.0 - PDF Session Export & GitHub Actions CI/CD
+**Latest Release**: v5.14.0 - Postgres 18, Dependency Updates & Backup File Import (see [ROADMAP.md](ROADMAP.md) for full release history)
 
 ### Key Highlights
 
@@ -209,18 +209,18 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 - **Architecture**: MVC pattern with controllers, services, middleware, and routes
 - **Real-time**: Socket.IO (^4.7.2) with WebSocket transport and persistent session tracking
 - **Database**: PostgreSQL 18 with connection pooling (pg ^8.11.0)
-- **Authentication**: bcrypt (^5.1.1) for password hashing, session-based tokens
+- **Authentication**: bcrypt (^6.0.0) for password hashing, session-based tokens
 - **Security**: CSRF protection (csrf-csrf), rate limiting (express-rate-limit), CORS (cors)
 - **File Processing**: ExcelJS (^4.4.0), XLSX (^0.18.5), Multer (^2.0.2)
-- **Utilities**: crypto (built-in), QRCode (^1.5.1), dotenv (^16.1.4), cookie-parser (^1.4.6)
+- **Utilities**: crypto (built-in), QRCode (^1.5.1), dotenv (^16.1.4), cookie-parser (^1.4.7)
 
 ### Frontend
 - **Framework**: Vue 3 (^3.3.0) - Composition API
-- **Build Tool**: Vite (^5.4.21) - Fast HMR and optimized builds
+- **Build Tool**: Vite (^8.0.8) - Fast HMR and optimized builds
 - **State Management**: Pinia (^2.1.0) - Vue's official state management
 - **Routing**: Vue Router (^4.2.0) - SPA navigation
 - **HTTP Client**: Axios (^1.6.0)
-- **Charts**: Chart.js (^4.4.0) + vue-chartjs (^5.3.0) - Theme-aware data visualization
+- **Charts**: Chart.js (^4.5.1) + vue-chartjs (^5.3.3) - Theme-aware data visualization
 - **Real-time Client**: Socket.IO Client (^4.7.0)
 - **Styling**: Modern CSS3 with custom properties and responsive design
 - **Theme System**: 4-theme support (Light, Dark, Grey, System) with enhanced light theme visibility
@@ -587,6 +587,7 @@ TriviaForge/
 │   │   │   └── version.js      # Centralized version management
 │   │   ├── controllers/  # REST API controllers
 │   │   │   ├── auth.controller.js
+│   │   │   ├── backup.controller.js  # Database backup/restore/import API
 │   │   │   ├── quiz.controller.js
 │   │   │   ├── questionBank.controller.js
 │   │   │   ├── session.controller.js
@@ -599,6 +600,7 @@ TriviaForge/
 │   │   │   └── errorHandler.js # Global error handler
 │   │   ├── routes/       # REST API routes
 │   │   │   ├── auth.routes.js
+│   │   │   ├── backup.routes.js      # Database backup/restore/import routes
 │   │   │   ├── quiz.routes.js
 │   │   │   ├── questionBank.routes.js
 │   │   │   ├── session.routes.js
@@ -608,6 +610,7 @@ TriviaForge/
 │   │   │   └── user.routes.js
 │   │   ├── services/     # Business logic services
 │   │   │   ├── autoMode.service.js   # Server-side auto-mode timer engine
+│   │   │   ├── backup.service.js     # pg_dump/restore, backup import & metadata parsing
 │   │   │   ├── export.service.js     # CSV export functionality
 │   │   │   ├── quiz.service.js       # Quiz data access
 │   │   │   ├── room.service.js       # Live room state management
@@ -667,7 +670,9 @@ TriviaForge/
 │   │   ├── 12-auto-mode-solo-play.sql # Auto-mode & solo play
 │   │   ├── 13-fix-solo-guest-participants.sql # Guest participant fix
 │   │   ├── 14-show-results-setting.sql    # Show results toggle
-│   │   └── 15-server-url-setting.sql      # Server URL setting
+│   │   ├── 15-server-url-setting.sql      # Server URL setting
+│   │   ├── 16-trusted-devices.sql         # 2FA trusted device tokens
+│   │   └── 17-cleanup-display-ghost-users.sql # Prevents Display connections creating ghost users
 │   ├── testing/          # Automated testing suite
 │   │   ├── README.md     # Testing suite overview
 │   │   ├── TESTING.md    # Complete testing guide
@@ -685,7 +690,8 @@ TriviaForge/
 ├── .env.example          # Environment variables template
 ├── LICENSE               # PolyForm Noncommercial License
 ├── CONTRIBUTING.md       # Contribution guidelines
-├── TODO.md               # Feature roadmap
+├── TODO.md               # Active development tasks
+├── ROADMAP.md            # Completed feature history & future plans
 └── README.md             # This file
 ```
 
@@ -796,207 +802,7 @@ We welcome contributions from the community! Please read our [CONTRIBUTING.md](C
 
 ## Roadmap
 
-### Completed Features
-
-**v5.11.0 (Apr 2026) - PDF Session Export & GitHub Actions CI/CD**
-- [x] Rich PDF session reports: summary page with podium (top-3 gold/silver/bronze), full leaderboard, per-question accuracy bar chart
-- [x] Per-question pages: question text, embedded images (WebP/GIF/AVIF auto-converted to PNG), color-coded answer choices, player response grid
-- [x] Bulk PDF export — multiple sessions downloaded as a ZIP archive (one PDF per session)
-- [x] Export PDF buttons added alongside existing CSV buttons in session list and session detail modal
-- [x] GitHub Actions CI/CD: auto-builds and pushes Docker image to Docker Hub on version tag push (`v*.*.*`)
-- [x] Publishes both `:latest` and `:vX.Y.Z` tags to `emancodetemplar/triviaforge` on Docker Hub
-
-**v5.10.5 (Apr 2026) - Auto-Pilot Fixes & Connection Optimization**
-- [x] Fixed auto-pilot skipping the live question when starting mid-session
-- [x] Fixed auto-pilot resume not correctly calculating remaining time after pause
-- [x] Fixed answer reveal modal appearing twice when auto-mode and auto-reveal both active
-- [x] Fixed "All players answered" banner stuck on presenter across question transitions
-- [x] Fixed presenter losing auto-pilot control after page refresh (viewRoom now updates presenterId)
-- [x] Prevented Display/spectator connections from creating ghost users in the database
-- [x] Removed redundant app-level heartbeat (saves ~240 WebSocket messages/minute at 30 players)
-- [x] Reduced socket pingTimeout from 360s to 60s — dead connections detected within ~85 seconds
-
-**v5.10.4 (Mar 2026) - Display & Player UI Polish**
-- [x] Fixed Display page content breaking words mid-character on small viewports
-- [x] Display page now scales with vmin-based clamp() — never scrolls on any screen size
-- [x] Fixed player choice text breaking mid-word (removed aggressive word-break)
-- [x] Fixed player navbar question progress pill hidden on mobile (≤480px)
-- [x] Player progress counter (X/Y) now updates correctly in real-time
-
-**v5.10.3 (Mar 2026) - Auto-Pilot State Sync**
-- [x] Auto-pilot timer and state now correctly sync to all connected clients on start
-- [x] Presenter reconnection fully restores auto-mode state (timer, settings, active status)
-- [x] Second browser/viewRoom no longer loses auto-mode UI
-- [x] Session resume now includes auto-mode state in room restore payload
-
-**v5.10.2 (Mar 2026) - Session & CSRF Resilience**
-- [x] Sliding session expiry — sessions extend on activity, not fixed timeout from login
-- [x] CSRF token auto-retry: expired tokens transparently refreshed and request retried once
-- [x] Quiz settings no longer reset to defaults when a partial update is submitted
-
-**v5.10.1 (Mar 2026) - CSRF & Import Bugfix**
-- [x] Fixed CSRF token validation failures in Docker behind a proxy (trust proxy setting)
-- [x] Fixed quiz import "Use Existing" option crashing with duplicate key error
-
-**v5.10.0 (Mar 2026) - Unified Navbar Redesign**
-- [x] Unified navbar design system across all 5 navbars with shared CSS classes
-- [x] Admin/Presenter links visible on player-side pages when logged in as admin
-- [x] Consistent right-aligned links, AppIcon on every link, active page underline
-- [x] Hover: color change + subtle bottom border, danger links in red
-- [x] Hamburger mobile menu with tight spacing, replaced emoji rank medals with AppIcon
-
-**v5.9.0 (Mar 2026) - Trusted Devices & Score Fix**
-- [x] "Remember this device for 30 days" checkbox on 2FA login - skips TOTP on trusted devices
-- [x] Secure device token storage with 30-day expiry and periodic cleanup
-- [x] Fixed `game_participants.score` always being 0 - now computes correct answer count on save
-- [x] Guest participant scores also updated on re-save
-
-**v5.8.0 (Mar 2026) - Player Stats Dashboard**
-- [x] Dedicated `/stats` page for registered players with login required
-- [x] Summary cards: total games, overall accuracy, best score, wins, avg rank, play streak
-- [x] Accuracy and score trend charts (Chart.js + vue-chartjs) with theme-aware styling
-- [x] Paginated game history table with type filter (all/solo/multiplayer)
-- [x] Mobile-responsive layout with card view for small screens
-- [x] "My Stats" navigation links from Player and Solo Play pages
-- [x] Solo play now tracks user_id for authenticated players (enables stats)
-- [x] Three new API endpoints: /api/stats/summary, /history, /charts
-
-**v5.7.0 (Feb 2026) - Admin-Configurable Server URL**
-- [x] Server Settings panel in Admin > Settings tab for configuring QR code URLs
-- [x] Dynamic URL resolution: DB setting takes priority over env var over auto-detected IP
-- [x] No container rebuild needed - changes take effect immediately for new QR codes
-- [x] Fixed player auth redirect bug for expired tokens scanning QR codes
-
-**v5.5.0 (Feb 2026) - Backend Performance & Session Health**
-- [x] Backend Performance Optimizations - Memory cleanup scheduler, Socket.IO rate limiting, room activity tracking
-- [x] Session Health Monitoring - Admin panel with memory usage, session counts, and live room statistics
-- [x] Configurable Socket.IO Rate Limits - Environment variables for join and answer rate limits (NAT-friendly defaults)
-- [x] Presenter Layout Improvements - Two-column layout for controls (buttons left, auto-mode right)
-- [x] Memory Progress Bars - Color-coded visualization (green/yellow/red) based on usage percentage
-- [x] Auto-refresh Toggle - 10-second interval for real-time monitoring
-
-**v5.4.4 (Feb 2026) - Auto-Mode & Solo Play**
-- [x] Auto-Mode Timer System - Server-side timers run independently of presenter's browser
-- [x] Configurable question timer (10-120 seconds) and reveal delay (2-30 seconds)
-- [x] Pause/Resume functionality with remaining time preservation
-- [x] Auto-advance to next question after reveal delay
-- [x] All players answered detection skips remaining question timer
-- [x] Solo Play Mode - REST-based self-study without presenter
-- [x] Solo quiz browser with solo-enabled quizzes only
-- [x] Per-question countdown timer with immediate feedback
-- [x] Results summary with per-question breakdown
-- [x] Quiz visibility controls (available_live, available_solo flags)
-- [x] Live/Solo badges on quiz list items with toggle controls
-- [x] CountdownTimer component for player and display views
-
-**v5.3.4 (Feb 2026) - Complete Duplicate Detection System**
-- [x] Question Bank with centralized question management across all quizzes
-- [x] Tag system with customizable colors for question organization
-- [x] Question filtering by tag, type, archived status, and search text
-- [x] Archive/restore questions with soft delete functionality
-- [x] Find Duplicates tool with Levenshtein similarity algorithm (configurable threshold)
-- [x] Ignore duplicate pairs feature for false positive management
-- [x] Import duplicates review for bulk Excel imports with per-item decisions
-- [x] Single question duplicate detection on save with warning modal
-- [x] Question Details modal with metadata, quiz usage, and tag management
-- [x] Add existing questions to quizzes directly from the Question Bank
-
-**v5.2.2 (Feb 2026) - Lucide Icons & UI Polish**
-- [x] Replaced all emojis with Lucide icons via Iconify for consistent UI
-- [x] Created AppIcon wrapper component for standardized icon usage
-- [x] Theme-aware icon colors across all components
-- [x] Professional icon set throughout the application
-
-**v5.2.1 (Jan 2026) - Quick Fixes**
-- [x] Widened Account Settings modal for better usability
-- [x] Removed placeholder PDF export (CSV is sufficient)
-
-**v5.2.0 (Jan 2026) - Session Management & 2FA**
-- [x] Two-Factor Authentication (TOTP) with QR code setup
-- [x] Backup codes generation for 2FA recovery
-- [x] Session filtering by date range, quiz name, and status
-- [x] CSV export for individual and bulk sessions
-- [x] Bulk session selection and deletion
-- [x] Question images displayed in session details
-- [x] Session breakdown with player responses per question
-
-**v5.1.0 (Jan 2026) - Auto Database Migrations**
-- [x] Version-based database migration system
-- [x] Automatic schema updates on deployment
-- [x] Dynamic migration file detection (no hardcoded list)
-- [x] Fast startup when version unchanged (skips migration check)
-- [x] Individual migration tracking prevents re-running
-- [x] Idempotent migrations safe for existing databases
-
-**v5.0.0 (Jan 2026) - Multi-Admin Support**
-- [x] Media images now supported in questions via URL or local upload to container
-- [x] True/False option added for questions
-- [x] Multi-admin support with isolated quizzes and sessions per admin
-- [x] Root admin can create/delete admin accounts and reset passwords
-- [x] Session isolation - regular admins only see their own sessions
-- [x] Session creator tracking - root admin sees who created each session
-- [x] Account settings modal on Admin and Presenter pages
-- [x] Password change with current password verification
-- [x] Email address management for future recovery features
-- [x] Presenter navbar dropdown matching Admin page style
-- [x] User Management visual alignment improvements (CSS Grid)
-- [x] Last seen timestamp fix including session token activity
-- [x] Player disconnect immediately marks as disconnected
-
-**v4.3.0 (Jan 2026) - Presenter Enhancements**
-- [x] Real-time answer progress tracking with percentage and animated progress bar
-- [x] All players answered notification banner with visual indicator
-- [x] Auto-reveal functionality with 3-second countdown and cancel option
-- [x] Configurable auto-reveal toggle (persists during session)
-- [x] Smart player counting (excludes disconnected players)
-- [x] Enhanced player status grouping (connected/away/disconnected)
-- [x] Player count summary with color-coded icons
-
-**v4.2.1 (Jan 2026) - Style Refactoring Release**
-- [x] Component-first CSS architecture (Button, FormInput, Card enhancements)
-- [x] Eliminated 560+ lines of duplicate CSS across 6 pages (12.5% reduction)
-- [x] Theme-aware color system (zero hardcoded colors, perfect theme switching)
-- [x] Centralized version management (single source of truth)
-- [x] Extracted 4 shared CSS pattern files (navbars, scrollbars, badges, modals)
-- [x] Migrated all 6 pages to use enhanced components
-- [x] Perfect contrast across all 4 themes (dark, light, grey, system)
-
-**v3.2.0 (Dec 2025) - Performance & Testing**
-- [x] Enhanced connection stability (infinite reconnection attempts, 30s page visibility debounce)
-- [x] Wake Lock API for mobile devices (prevents screen sleep)
-- [x] Automated testing framework with 8 predefined scenarios (3-50 players)
-- [x] Stress test configurations for scalable testing
-- [x] Optimized logging (90% reduction in log volume)
-- [x] Comprehensive testing documentation
-
-**v3.0.0 (Nov 2025) - User Management & Session Persistence**
-- [x] User authentication and accounts
-  - Guest and registered player accounts
-  - Session persistence with JWT tokens
-  - Password reset functionality
-  - User management interface
-  - Recent rooms with active filtering
-
-**v2.0.0 and earlier**
-- [x] Real-time multiplayer trivia sessions
-- [x] Admin panel with quiz management
-- [x] Excel import/export functionality
-- [x] QR code generation for quick joins
-- [x] Session resume capability
-- [x] PostgreSQL database integration
-- [x] Docker containerization
-
-### Future Features
-
-**Under Consideration:**
-- [ ] Advanced leaderboard and scoring systems
-- [ ] Team mode for collaborative play
-- [ ] PDF export with proper formatting
-- [ ] Email verification for admin accounts
-- [ ] Remember device for 2FA (30-day trusted devices)
-- [ ] Internationalization (i18n)
-- [ ] Custom scoring algorithms
-- [ ] Powerups and game modifiers
+See [ROADMAP.md](ROADMAP.md) for the full completed-feature history and planned future work.
 
 ## Credits
 
