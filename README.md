@@ -208,7 +208,7 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 - **Framework**: Express.js (^4.18.2) with modular architecture (v4.0.0)
 - **Architecture**: MVC pattern with controllers, services, middleware, and routes
 - **Real-time**: Socket.IO (^4.7.2) with WebSocket transport and persistent session tracking
-- **Database**: PostgreSQL 15 with connection pooling (pg ^8.11.0)
+- **Database**: PostgreSQL 18 with connection pooling (pg ^8.11.0)
 - **Authentication**: bcrypt (^5.1.1) for password hashing, session-based tokens
 - **Security**: CSRF protection (csrf-csrf), rate limiting (express-rate-limit), CORS (cors)
 - **File Processing**: ExcelJS (^4.4.0), XLSX (^0.18.5), Multer (^2.0.2)
@@ -228,7 +228,7 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 ### Infrastructure
 - **Containerization**: Docker & Docker Compose
 - **CI/CD**: GitHub Actions — automatically builds and pushes Docker images to Docker Hub on version tag push (`v*.*.*`)
-- **Database**: PostgreSQL 15 (official Docker image)
+- **Database**: PostgreSQL 18 (official Docker image)
 - **Schema**: Fully normalized relational design with foreign keys
 - **Connection Pooling**: Optimized for concurrent sessions
 - **Session Persistence**: Database-backed session storage
@@ -243,13 +243,13 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 
 ### Prerequisites
 - **Docker** and **Docker Compose** (recommended)
-  - OR Node.js (v20 or higher) + PostgreSQL 15
+  - OR Node.js (v20 or higher) + PostgreSQL 18
 
 ### Quick Start with Docker (Recommended)
 
 > **Important**: TriviaForge requires **TWO containers** to run:
 > 1. `triviagame-app` - The Node.js application (pulls from Docker Hub)
-> 2. `triviagame-db` - PostgreSQL 15 database (pulls from Docker Hub)
+> 2. `triviagame-db` - PostgreSQL 18 database (pulls from Docker Hub)
 >
 > You **MUST** use docker-compose to start both containers together.
 
@@ -295,7 +295,7 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
    ```
 
    This will:
-   - Pull `postgres:15` from Docker Hub
+   - Pull `postgres:18` from Docker Hub
    - Pull `emancodetemplar/triviaforge:latest` from Docker Hub
    - Start the database and wait for it to be healthy
    - Initialize the database schema automatically (takes 30-60 seconds)
@@ -376,9 +376,33 @@ docker-compose restart        # Restart existing containers
 docker-compose up -d          # Recreate containers if needed
 ```
 
+### Upgrading an Existing Install (Postgres 15 → 18)
+
+Starting with this release, `docker-compose.yml` moves from `postgres:15` to `postgres:18`. The official Postgres 18 image also changed its data volume layout, so it will **refuse to start** against a volume initialized by Postgres 15/16/17 — this is expected, not a bug, and no data is destroyed by the failed start.
+
+If you have an existing deployment with real data, back up and migrate before pulling this update:
+
+1. **On your current (pre-upgrade) install**, go to Admin → Settings → Database Backups and click **Create Backup**. It's also worth clicking **Download** to keep a copy outside the container as a safety net, but it isn't strictly required — the backup file lives in the separate `backups` Docker volume, not `pgdata`, so it survives step 2 untouched.
+
+2. **Stop the stack and remove only the old Postgres volume:**
+   ```bash
+   docker-compose down
+   docker volume rm <project>_pgdata   # e.g. triviagame_pgdata — check `docker volume ls`. Do NOT remove the `backups` or `uploads` volumes.
+   ```
+
+3. **Pull and start the updated stack** (this initializes a fresh, empty Postgres 18 volume and lets the app run its normal schema migrations):
+   ```bash
+   docker-compose pull
+   docker-compose up -d
+   ```
+
+4. **Restore your backup** — go to Admin → Settings → Database Backups, find the backup from step 1 in the list, and click **Restore**. The app applies it and restarts automatically.
+
+If you're running a fresh install with no existing data, skip all of this — Postgres 18 will initialize normally.
+
 ### Manual Setup (Without Docker)
 
-1. **Install PostgreSQL 15**
+1. **Install PostgreSQL 18**
    - Follow [PostgreSQL installation guide](https://www.postgresql.org/download/)
 
 2. **Create database**

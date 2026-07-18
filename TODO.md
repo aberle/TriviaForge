@@ -767,6 +767,8 @@ Add notification to presenter when all connected players have answered the curre
 - [x] Database backup/restore strategy - v5.12.0 ✅
 - [x] Backup file import — restore from a downloaded .sql.gz on a freshly rebuilt instance, since restore previously only worked on backups already present in the `backups` volume - v5.14.0 ✅
 - [x] Database migration versioning - v5.1.0 ✅
+- [x] Postgres 15 → 18 upgrade + Node 22 → 24 base image + safe npm dependency bumps - v5.13.0 ✅ (see README "Upgrading an Existing Install" for the required volume migration steps for existing deployments)
+- [ ] Follow-up: major npm version bumps deferred from the dependency-update pass — express 5, pinia 4, vue-router 5, uuid 14 (also fixes a moderate CVE, GHSA-w5hq-g745-h8pq), csv-parse 7, archiver 8, @iconify/vue 5, dotenv 17, pdfkit 0.19. Each needs its own testing pass due to breaking API changes.
 - [ ] Performance monitoring and query optimization
 - [x] GitHub Actions - Docker Auto-Build & Push to Docker Hub - v5.11.0 ✅
 

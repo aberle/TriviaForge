@@ -5,7 +5,7 @@
  */
 
 export const VERSION = '5.14.0'
-export const VERSION_NAME = 'Backup File Import'
+export const VERSION_NAME = 'Postgres 18, Dependency Updates & Backup Import'
 export const RELEASE_DATE = '2026-07-18'
 
 export default {
