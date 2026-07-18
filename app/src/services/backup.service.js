@@ -11,7 +11,7 @@
 import { spawn } from 'child_process';
 import { createWriteStream } from 'fs';
 import { promises as fs } from 'fs';
-import { createGzip } from 'zlib';
+import { createGzip, gunzipSync } from 'zlib';
 import path from 'path';
 import crypto from 'crypto';
 import { query } from '../config/database.js';
@@ -88,6 +88,63 @@ async function getAppliedMigrations() {
   } catch {
     return [];
   }
+}
+
+/**
+ * Extract the COPY data block for a given table from a plain-format pg_dump SQL text.
+ * @returns {string[]|null} tab-split data lines, or null if the table isn't in the dump
+ */
+function extractCopyBlock(sqlText, table) {
+  const header = `COPY public.${table} (`;
+  const headerLineEnd = sqlText.indexOf(`\n`, sqlText.indexOf(header));
+  if (headerLineEnd === -1) return null;
+
+  const terminatorIdx = sqlText.indexOf('\n\\.', headerLineEnd);
+  if (terminatorIdx === -1) return null;
+
+  const block = sqlText.slice(headerLineEnd + 1, terminatorIdx);
+  return block === '' ? [] : block.split('\n');
+}
+
+/**
+ * Parse row counts, applied migrations, and the app version marker directly out of
+ * an uncompressed pg_dump SQL text — used for imported backups, since that
+ * information isn't otherwise recoverable from a bare .sql.gz file.
+ */
+function parseDumpMetadata(sqlText) {
+  const rowCounts = {};
+  for (const table of COUNTED_TABLES) {
+    const lines = extractCopyBlock(sqlText, table);
+    rowCounts[table] = lines ? lines.length : null;
+  }
+
+  let appVersion = null;
+  let migrationsApplied = [];
+  const migrationHeader = 'COPY public.schema_migrations (';
+  const headerIdx = sqlText.indexOf(migrationHeader);
+  if (headerIdx !== -1) {
+    const columns = sqlText
+      .slice(headerIdx + migrationHeader.length, sqlText.indexOf(')', headerIdx))
+      .split(',')
+      .map((c) => c.trim());
+    const filenameIdx = columns.indexOf('filename');
+    const lines = extractCopyBlock(sqlText, 'schema_migrations') || [];
+
+    if (filenameIdx !== -1) {
+      for (const line of lines) {
+        const filename = line.split('\t')[filenameIdx];
+        const versionMatch = filename && filename.match(/^__app_version_(.+)__$/);
+        if (versionMatch) {
+          appVersion = versionMatch[1];
+        } else if (filename) {
+          migrationsApplied.push(filename);
+        }
+      }
+      migrationsApplied.sort();
+    }
+  }
+
+  return { rowCounts, appVersion, migrationsApplied };
 }
 
 /**
@@ -182,14 +239,28 @@ export async function importBackup(fileBuffer) {
 
   await fs.writeFile(sqlGzPath, fileBuffer);
 
+  let appVersion = null;
+  let rowCounts = null;
+  let migrationsApplied = [];
+  try {
+    const { appVersion: v, rowCounts: rc, migrationsApplied: m } = parseDumpMetadata(
+      gunzipSync(fileBuffer).toString('utf-8')
+    );
+    appVersion = v;
+    rowCounts = rc;
+    migrationsApplied = m;
+  } catch (err) {
+    console.warn(`[BACKUP] Could not parse imported dump metadata: ${err.message}`);
+  }
+
   const meta = {
     name,
-    appVersion: null,
+    appVersion,
     exportedAt: timestamp,
     trigger: 'imported',
     sizeBytes: fileBuffer.length,
-    rowCounts: null,
-    migrationsApplied: [],
+    rowCounts,
+    migrationsApplied,
     imported: true,
   };
 

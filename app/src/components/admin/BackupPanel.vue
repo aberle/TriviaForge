@@ -311,10 +311,10 @@ const formatSize = (bytes) => {
 
 const formatCounts = (counts) => {
   if (!counts) return '—'
-  return Object.entries(counts)
+  const parts = Object.entries(counts)
     .filter(([, v]) => v !== null)
     .map(([k, v]) => `${v.toLocaleString()} ${k}`)
-    .join(', ')
+  return parts.length ? parts.join(', ') : '—'
 }
 
 onMounted(fetchBackups)
