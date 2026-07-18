@@ -256,9 +256,9 @@ export async function createQuiz(req, res, next) {
         [quizId, questionId, i + 1]
       );
 
-      // Insert answers
+      // Insert answers — for short_answer questions every entry is an accepted answer, so all are "correct"
       for (let j = 0; j < (q.choices || []).length; j++) {
-        const isCorrect = j === q.correctChoice;
+        const isCorrect = questionType === 'short_answer' ? true : j === q.correctChoice;
         await client.query(
           'INSERT INTO answers (question_id, answer_text, is_correct, display_order) VALUES ($1, $2, $3, $4)',
           [questionId, q.choices[j], isCorrect, j]
@@ -433,9 +433,9 @@ export async function updateQuiz(req, res, next) {
         [quizId, questionId, i + 1]
       );
 
-      // Insert answers
+      // Insert answers — for short_answer questions every entry is an accepted answer, so all are "correct"
       for (let j = 0; j < (q.choices || []).length; j++) {
-        const isCorrect = j === q.correctChoice;
+        const isCorrect = questionType === 'short_answer' ? true : j === q.correctChoice;
         await client.query(
           'INSERT INTO answers (question_id, answer_text, is_correct, display_order) VALUES ($1, $2, $3, $4)',
           [questionId, q.choices[j], isCorrect, j]
@@ -915,9 +915,9 @@ export async function importQuiz(req, res, next) {
           [quizId, questionId, questionOrder++]
         );
 
-        // Insert answers
+        // Insert answers — for short_answer questions every entry is an accepted answer, so all are "correct"
         for (let j = 0; j < q.choices.length; j++) {
-          const isCorrect = j === q.correctChoice;
+          const isCorrect = questionType === 'short_answer' ? true : j === q.correctChoice;
           await client.query(
             'INSERT INTO answers (question_id, answer_text, is_correct, display_order) VALUES ($1, $2, $3, $4)',
             [questionId, q.choices[j], isCorrect, j]
