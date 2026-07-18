@@ -39,6 +39,7 @@ import { quizService } from './src/services/quiz.service.js';
 import { autoModeService } from './src/services/autoMode.service.js';
 import { initializeAdminPassword } from './src/services/startup.service.js';
 import { isDisplayNameBanned } from './src/services/player.service.js';
+import { matchShortAnswer } from './src/utils/similarity.js';
 
 // --------------------
 // Helper: Auto-detect local IP
@@ -2291,7 +2292,16 @@ io.on('connection', (socket) => {
         const idx = parseInt(questionIndex);
         const question = room.quizData.questions[idx];
         const isRevealed = room.revealedQuestions && room.revealedQuestions.includes(idx);
-        const isCorrect = isRevealed ? choice === question.correctChoice : null;
+
+        let isCorrect = null;
+        if (isRevealed) {
+          if (question.type === 'short_answer') {
+            const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
+            isCorrect = matchShortAnswer(choice, question.acceptedAnswers || [], threshold).isCorrect;
+          } else {
+            isCorrect = choice === question.correctChoice;
+          }
+        }
 
         const historyItem = {
           questionIndex: idx,
@@ -2534,11 +2544,14 @@ io.on('connection', (socket) => {
 
     const results = Object.values(room.players)
       .filter(p => !p.isSpectator)
-      .map(p => ({
-        name: p.name,
-        choice: p.choice,
-        is_correct: p.choice === question.correctChoice
-      }));
+      .map(p => {
+        if (question.type === 'short_answer') {
+          const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
+          const match = matchShortAnswer(p.choice, question.acceptedAnswers || [], threshold);
+          return { name: p.name, choice: p.choice, is_correct: match.isCorrect };
+        }
+        return { name: p.name, choice: p.choice, is_correct: p.choice === question.correctChoice };
+      });
 
     io.to(roomCode).emit('questionRevealed', {
       questionIndex: room.currentQuestionIndex,
