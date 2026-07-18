@@ -206,11 +206,41 @@ function findDuplicateGroups(questions, threshold = 0.8) {
   return groups.sort((a, b) => b.similarity - a.similarity)
 }
 
+/**
+ * Grade a free-text answer against a list of accepted answers
+ *
+ * @param {string} playerText - The player's typed submission
+ * @param {Array<{id: number, answer_text: string}>} acceptedAnswers - Accepted answer rows for the question
+ * @param {number} threshold - Minimum similarity (0-1) to count as correct, default 0.85
+ * @returns {{isCorrect: boolean, matchedAnswerId: number|null, similarity: number}}
+ */
+function matchShortAnswer(playerText, acceptedAnswers, threshold = 0.85) {
+  if (!playerText || !acceptedAnswers || acceptedAnswers.length === 0) {
+    return { isCorrect: false, matchedAnswerId: null, similarity: 0 }
+  }
+
+  let best = { isCorrect: false, matchedAnswerId: null, similarity: 0 }
+
+  for (const accepted of acceptedAnswers) {
+    const similarity = calculateSimilarity(playerText, accepted.answer_text)
+    if (similarity > best.similarity) {
+      best = {
+        isCorrect: similarity >= threshold,
+        matchedAnswerId: similarity >= threshold ? accepted.id : null,
+        similarity: Math.round(similarity * 100) / 100
+      }
+    }
+  }
+
+  return best
+}
+
 export {
   normalizeText,
   levenshteinDistance,
   calculateSimilarity,
   generateTextHash,
   findSimilarQuestions,
-  findDuplicateGroups
+  findDuplicateGroups,
+  matchShortAnswer
 }
