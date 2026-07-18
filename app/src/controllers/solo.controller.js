@@ -14,6 +14,7 @@
 import { getClient, query } from '../config/database.js';
 import { NotFoundError, BadRequestError } from '../utils/errors.js';
 import { sendSuccess } from '../utils/responses.js';
+import { matchShortAnswer } from '../utils/similarity.js';
 import crypto from 'crypto';
 
 /**
@@ -292,15 +293,15 @@ export async function createSoloSession(req, res, next) {
 
 /**
  * Submit an answer for the current question
- * Body: { questionId, answerIndex, participantId }
+ * Body: { questionId, answerIndex, answerText, participantId }
  * Returns: { isCorrect, correctChoice, nextQuestion }
  */
 export async function submitSoloAnswer(req, res, next) {
   const { id: sessionId } = req.params;
-  const { questionId, answerIndex, participantId } = req.body;
+  const { questionId, answerIndex, answerText, participantId } = req.body;
 
-  if (questionId === undefined || answerIndex === undefined || !participantId) {
-    return next(new BadRequestError('questionId, answerIndex, and participantId are required'));
+  if (questionId === undefined || !participantId || (answerIndex === undefined && answerText === undefined)) {
+    return next(new BadRequestError('questionId, participantId, and either answerIndex or answerText are required'));
   }
 
   const client = await getClient();
@@ -350,30 +351,65 @@ export async function submitSoloAnswer(req, res, next) {
       throw new BadRequestError('Question already answered');
     }
 
-    // Get correct answer for this question
-    const correctAnswerResult = await client.query(
-      `SELECT a.display_order
-       FROM answers a
-       WHERE a.question_id = $1 AND a.is_correct = TRUE`,
+    // Look up question type
+    const questionTypeResult = await client.query(
+      `SELECT question_type FROM questions WHERE id = $1`,
       [questionId]
     );
-
-    if (correctAnswerResult.rows.length === 0) {
+    if (questionTypeResult.rows.length === 0) {
       await client.query('ROLLBACK');
       throw new BadRequestError('Question not found');
     }
+    const questionType = questionTypeResult.rows[0].question_type;
 
-    const correctChoice = correctAnswerResult.rows[0].display_order;
-    const isCorrect = answerIndex === correctChoice;
+    let isCorrect;
+    let correctChoice = null;
 
-    // Record the answer
-    await client.query(
-      `INSERT INTO participant_answers (participant_id, question_id, answer_id, is_correct, answered_at)
-       SELECT $1, $2, a.id, $3, NOW()
-       FROM answers a
-       WHERE a.question_id = $2 AND a.display_order = $4`,
-      [participantId, questionId, isCorrect, answerIndex]
-    );
+    if (questionType === 'short_answer') {
+      const acceptedAnswersResult = await client.query(
+        `SELECT id, answer_text FROM answers WHERE question_id = $1`,
+        [questionId]
+      );
+      const thresholdResult = await client.query(
+        `SELECT setting_value FROM app_settings WHERE setting_key = 'short_answer_match_threshold'`
+      );
+      const threshold = thresholdResult.rows.length > 0 ? parseFloat(thresholdResult.rows[0].setting_value) : 0.85;
+
+      const match = matchShortAnswer(answerText, acceptedAnswersResult.rows, threshold);
+      isCorrect = match.isCorrect;
+
+      // Record the answer — answer_id is the matched accepted answer if any, else NULL; answer_text always holds the raw submission
+      await client.query(
+        `INSERT INTO participant_answers (participant_id, question_id, answer_id, answer_text, is_correct, answered_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [participantId, questionId, match.matchedAnswerId, answerText, isCorrect]
+      );
+    } else {
+      // Get correct answer for this question
+      const correctAnswerResult = await client.query(
+        `SELECT a.display_order
+         FROM answers a
+         WHERE a.question_id = $1 AND a.is_correct = TRUE`,
+        [questionId]
+      );
+
+      if (correctAnswerResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        throw new BadRequestError('Question not found');
+      }
+
+      correctChoice = correctAnswerResult.rows[0].display_order;
+      isCorrect = answerIndex === correctChoice;
+
+      // Record the answer
+      await client.query(
+        `INSERT INTO participant_answers (participant_id, question_id, answer_id, is_correct, answered_at)
+         SELECT $1, $2, a.id, $3, NOW()
+         FROM answers a
+         WHERE a.question_id = $2 AND a.display_order = $4`,
+        [participantId, questionId, isCorrect, answerIndex]
+      );
+    }
 
     // Mark question as presented and revealed in session_questions
     await client.query(
@@ -548,7 +584,9 @@ export async function getSoloResults(req, res, next) {
         `SELECT
           qq.question_order,
           qs.question_text,
+          qs.question_type,
           pa.is_correct,
+          pa.answer_text as submitted_text,
           a_selected.answer_text as selected_answer,
           a_selected.display_order as selected_index,
           a_correct.answer_text as correct_answer,
@@ -563,16 +601,21 @@ export async function getSoloResults(req, res, next) {
         [participant.id, session.quiz_id]
       );
 
-      const questions = answersResult.rows.map((row, idx) => ({
-        index: idx,
-        text: row.question_text,
-        answered: row.selected_answer !== null,
-        isCorrect: row.is_correct || false,
-        selectedAnswer: row.selected_answer,
-        selectedIndex: row.selected_index,
-        correctAnswer: row.correct_answer,
-        correctIndex: row.correct_index
-      }));
+      const questions = answersResult.rows.map((row, idx) => {
+        const isShortAnswer = row.question_type === 'short_answer';
+        const selectedAnswer = isShortAnswer ? row.submitted_text : row.selected_answer;
+        return {
+          index: idx,
+          text: row.question_text,
+          type: row.question_type,
+          answered: selectedAnswer !== null,
+          isCorrect: row.is_correct || false,
+          selectedAnswer,
+          selectedIndex: row.selected_index,
+          correctAnswer: row.correct_answer,
+          correctIndex: row.correct_index
+        };
+      });
 
       const correctCount = questions.filter(q => q.isCorrect).length;
       const answeredCount = questions.filter(q => q.answered).length;
