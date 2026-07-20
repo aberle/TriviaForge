@@ -51,27 +51,28 @@ export function generateCSV(sessionData) {
   lines.push('#,Question,Correct Answer,Correct Count,Incorrect Count,Unanswered');
 
   sessionData.questions.forEach((question, qIdx) => {
-    // Count correct/incorrect answers for this question
+    const isShortAnswer = question.type === 'short_answer';
     let correctCount = 0;
     let incorrectCount = 0;
     let unansweredCount = 0;
 
     sessionData.playerResults.forEach((player) => {
       const answer = player.answers[qIdx];
-      if (answer === undefined) {
+      if (answer === undefined || answer === '') {
         unansweredCount++;
-      } else if (answer === question.correctChoice) {
+      } else if (isShortAnswer ? question.shortAnswerCorrectness?.[player.name] : answer === question.correctChoice) {
         correctCount++;
       } else {
         incorrectCount++;
       }
     });
 
-    const correctLetter = String.fromCharCode(65 + question.correctChoice);
-    const correctText = question.choices[question.correctChoice] || '';
+    const correctAnswerLabel = isShortAnswer
+      ? (question.acceptedAnswers || []).map(a => a.answer_text).join(' / ')
+      : `${String.fromCharCode(65 + question.correctChoice)}. ${question.choices[question.correctChoice] || ''}`;
 
     lines.push(
-      `${qIdx + 1},${escapeCSV(question.text)},${correctLetter}. ${escapeCSV(correctText)},${correctCount},${incorrectCount},${unansweredCount}`
+      `${qIdx + 1},${escapeCSV(question.text)},${escapeCSV(correctAnswerLabel)},${correctCount},${incorrectCount},${unansweredCount}`
     );
   });
 
