@@ -1199,6 +1199,15 @@ const confirmAnswer = () => {
   const answer = pendingAnswerIndex.value
   if (answer === null) return
 
+  // Guard against a stale confirm tap after auto-submit already fired
+  // (e.g. the timer expired while this modal was open) — avoid a second submitAnswer emit.
+  if (answeredCurrentQuestion.value || answerRevealed.value) {
+    console.log(`[ANSWER] Blocked confirm - already answered (${answeredCurrentQuestion.value}) or revealed (${answerRevealed.value})`)
+    showAnswerConfirmModal.value = false
+    pendingAnswerIndex.value = null
+    return
+  }
+
   console.log(`[ANSWER] ✅ Submitting confirmed answer "${answer}" for question ${currentQuestion.value.index}`)
   answeredCurrentQuestion.value = true
   answeredQuestions.add(currentQuestion.value.index)
@@ -1236,6 +1245,13 @@ const autoSubmitShortAnswer = (text) => {
   socket.emit('submitAnswer', { roomCode: currentRoomCode.value, choice: text })
   statusMessage.value = text ? 'Answer submitted! ✓' : 'Time expired — no answer submitted'
   statusMessageType.value = text ? 'success' : 'warning'
+
+  // If the confirm modal happened to still be open when the timer expired,
+  // close it and clear the pending answer so a stale "Confirm" tap can't re-submit.
+  if (showAnswerConfirmModal.value) {
+    showAnswerConfirmModal.value = false
+    pendingAnswerIndex.value = null
+  }
 }
 
 const cancelAnswer = () => {
