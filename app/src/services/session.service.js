@@ -9,6 +9,7 @@
 
 import { getClient, query } from '../config/database.js';
 import { env } from '../config/environment.js';
+import { matchShortAnswer } from '../utils/similarity.js';
 
 /**
  * SessionService - Manages session persistence and auto-save
@@ -24,9 +25,13 @@ class SessionService {
    * Save room session to database
    * @param {string} roomCode - Room code
    * @param {Object} room - Room object with full state
+   * @param {number} [shortAnswerThreshold=0.85] - Minimum similarity (0-1) for
+   *   grading short-answer submissions against accepted answers. Sourced from
+   *   the live `quizOptions.shortAnswerMatchThreshold` admin setting by callers
+   *   that have access to it; defaults to 0.85 otherwise.
    * @returns {Promise<string>} Session ID
    */
-  async saveSession(roomCode, room) {
+  async saveSession(roomCode, room, shortAnswerThreshold = 0.85) {
     const client = await getClient();
 
     try {
@@ -96,9 +101,19 @@ class SessionService {
         // Compute player's correct answer count
         let playerScore = 0;
         if (player.answers && room.quizData && room.quizData.questions) {
-          for (const [qIdx, choice] of Object.entries(player.answers)) {
+          for (const [qIdx, answer] of Object.entries(player.answers)) {
             const question = room.quizData.questions[parseInt(qIdx)];
-            if (question && choice === question.correctChoice) {
+            if (!question) continue;
+
+            if (question.type === 'short_answer') {
+              if (
+                answer !== undefined &&
+                answer !== '' &&
+                matchShortAnswer(answer, question.acceptedAnswers || [], shortAnswerThreshold).isCorrect
+              ) {
+                playerScore++;
+              }
+            } else if (answer === question.correctChoice) {
               playerScore++;
             }
           }
@@ -187,35 +202,58 @@ class SessionService {
 
         // 4. Insert participant answers
         if (player.answers && typeof player.answers === 'object') {
-          for (const [questionIndexStr, choiceIndex] of Object.entries(player.answers)) {
+          for (const [questionIndexStr, answer] of Object.entries(player.answers)) {
             const questionIndex = parseInt(questionIndexStr);
             const question = room.quizData.questions[questionIndex];
 
-            if (question && question.id) {
-              // Find the answer_id for this choice
-              const answerResult = await client.query(
+            if (!question || !question.id) continue;
+
+            if (question.type === 'short_answer') {
+              // Free-text submissions have no natural row in `answers` to point
+              // to. Grade against acceptedAnswers and persist the raw text
+              // (answer_id is nullable, answer_text holds the typed response;
+              // see app/init/18-short-answer-questions.sql) so it can be
+              // surfaced later (e.g. QuestionBreakdown.vue's shortAnswerCorrectness).
+              if (answer === undefined || answer === '') continue;
+
+              const match = matchShortAnswer(answer, question.acceptedAnswers || [], shortAnswerThreshold);
+
+              await client.query(
                 `
-                SELECT id, is_correct
-                FROM answers
-                WHERE question_id = $1 AND display_order = $2
+                INSERT INTO participant_answers (
+                  participant_id, question_id, answer_id, answer_text, is_correct, answered_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (participant_id, question_id) DO NOTHING
               `,
-                [question.id, choiceIndex]
+                [participantId, question.id, match.matchedAnswerId, answer, match.isCorrect, new Date()]
               );
+              continue;
+            }
 
-              if (answerResult.rows.length > 0) {
-                const answer = answerResult.rows[0];
+            // Find the answer_id for this choice (multiple_choice / true_false)
+            const answerResult = await client.query(
+              `
+              SELECT id, is_correct
+              FROM answers
+              WHERE question_id = $1 AND display_order = $2
+            `,
+              [question.id, answer]
+            );
 
-                await client.query(
-                  `
-                  INSERT INTO participant_answers (
-                    participant_id, question_id, answer_id, is_correct, answered_at
-                  )
-                  VALUES ($1, $2, $3, $4, $5)
-                  ON CONFLICT (participant_id, question_id) DO NOTHING
-                `,
-                  [participantId, question.id, answer.id, answer.is_correct, new Date()]
-                );
-              }
+            if (answerResult.rows.length > 0) {
+              const matchedAnswer = answerResult.rows[0];
+
+              await client.query(
+                `
+                INSERT INTO participant_answers (
+                  participant_id, question_id, answer_id, is_correct, answered_at
+                )
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (participant_id, question_id) DO NOTHING
+              `,
+                [participantId, question.id, matchedAnswer.id, matchedAnswer.is_correct, new Date()]
+              );
             }
           }
         }
@@ -387,8 +425,10 @@ class SessionService {
    * Schedule auto-save for a room
    * @param {string} roomCode - Room code
    * @param {Function} getRoomFn - Function to get current room state
+   * @param {number} [shortAnswerThreshold=0.85] - Minimum similarity (0-1) for
+   *   grading short-answer submissions; see saveSession()
    */
-  scheduleAutoSave(roomCode, getRoomFn) {
+  scheduleAutoSave(roomCode, getRoomFn, shortAnswerThreshold = 0.85) {
     // Clear existing interval if any
     this.clearAutoSave(roomCode);
 
@@ -409,7 +449,7 @@ class SessionService {
           console.log(`[SESSION SERVICE] Auto-saving room ${roomCode}...`);
         }
 
-        await this.saveSession(roomCode, room);
+        await this.saveSession(roomCode, room, shortAnswerThreshold);
 
         if (env.isVerboseLogging) {
           console.log(`[SESSION SERVICE] ✅ Auto-save complete for room ${roomCode}`);

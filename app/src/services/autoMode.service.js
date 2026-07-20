@@ -318,7 +318,7 @@ class AutoModeService {
 
     // Start auto-save on first question (matches server.js line 1789-1791)
     if (nextIndex === 0) {
-      sessionService.scheduleAutoSave(roomCode, (code) => this.roomService.getRoom(code));
+      sessionService.scheduleAutoSave(roomCode, (code) => this.roomService.getRoom(code), this.quizOptions?.shortAnswerMatchThreshold);
     }
 
     // Reset player choices (matches server.js lines 1795-1803)
@@ -475,7 +475,7 @@ class AutoModeService {
     let savedFilename = null;
     if (hasAnswers) {
       try {
-        savedFilename = await sessionService.saveSession(roomCode, room);
+        savedFilename = await sessionService.saveSession(roomCode, room, this.quizOptions?.shortAnswerMatchThreshold);
         console.log(`[AutoMode] Session saved: ${savedFilename}`);
       } catch (err) {
         console.error(`[AutoMode] Error saving session for room ${roomCode}:`, err);

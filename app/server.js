@@ -257,7 +257,7 @@ await fs.mkdir(COMPLETED_FOLDER, { recursive: true });
 // Helper: save session to database (Phase 3: Wrapper for sessionService.saveSession)
 // --------------------
 const saveSession = async (roomCode, room) => {
-  return await sessionService.saveSession(roomCode, room);
+  return await sessionService.saveSession(roomCode, room, quizOptions.shortAnswerMatchThreshold);
 };
 
 // --------------------
@@ -907,7 +907,7 @@ let quizOptions = { answerDisplayTime: 30, serverUrl: '', shortAnswerMatchThresh
 
 // Start periodic auto-save for a room (Phase 3: Using SessionService)
 function startAutoSave(roomCode) {
-  sessionService.scheduleAutoSave(roomCode, (code) => roomService.getRoom(code));
+  sessionService.scheduleAutoSave(roomCode, (code) => roomService.getRoom(code), quizOptions.shortAnswerMatchThreshold);
 }
 
 // Stop periodic auto-save for a room (Phase 3: Using SessionService)
@@ -1381,7 +1381,7 @@ const cleanupExpiredRooms = async () => {
       if (hasAnswers && room.status !== 'completed') {
         room.status = 'interrupted';
         room.completedAt = new Date().toISOString();
-        await sessionService.saveSession(roomCode, room);
+        await sessionService.saveSession(roomCode, room, quizOptions.shortAnswerMatchThreshold);
         if (VERBOSE_LOGGING) {
           console.log(`[CLEANUP] Saved interrupted session for room ${roomCode}`);
         }
