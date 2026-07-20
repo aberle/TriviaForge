@@ -304,9 +304,10 @@ function drawSummaryPage(doc, sessionData) {
       let total = 0;
       sessionData.playerResults.forEach((p) => {
         const ans = p.answers[qi];
-        if (ans !== undefined) {
+        if (ans !== undefined && ans !== '') {
           total++;
-          if (ans === q.correctChoice) correct++;
+          const isCorrect = q.type === 'short_answer' ? q.shortAnswerCorrectness?.[p.name] : ans === q.correctChoice;
+          if (isCorrect) correct++;
         }
       });
       const accuracy = pct(correct, total);
@@ -380,32 +381,45 @@ async function drawQuestionPages(doc, sessionData) {
     const BADGE_W = 68;
     const choiceTextW = CONTENT_W - 18 - BADGE_W - 20; // letter + badge + padding
 
-    q.choices.forEach((choice, ci) => {
-      if (y > PAGE.height - 60) { doc.addPage(); drawPageHeader(doc); y = 50; }
-      const isCorrect = ci === q.correctChoice;
-      const bgColor = isCorrect ? '#D1FAE5' : BRAND.bg;
-      const borderColor = isCorrect ? BRAND.success : BRAND.border;
-      const textColor = isCorrect ? '#065F46' : BRAND.text;
-
-      drawRect(doc, PAGE.margin, y, CONTENT_W, 20, bgColor, 3);
-      drawBorder(doc, PAGE.margin, y, CONTENT_W, 20, borderColor, 3);
-
-      // Letter label
-      doc.fontSize(9).font('Helvetica-Bold').fillColor(textColor)
-        .text(`${letters[ci]}.`, PAGE.margin + 6, y + 6, { width: 18, lineBreak: false });
-
-      // Choice text — width capped so it never reaches the badge column
-      doc.font('Helvetica').fillColor(textColor)
-        .text(choice, PAGE.margin + 24, y + 6, { width: choiceTextW, lineBreak: false });
-
-      // Correct badge — pinned to the right edge
-      if (isCorrect) {
-        const badgeX = PAGE.margin + CONTENT_W - BADGE_W - 4;
+    if (q.type === 'short_answer') {
+      (q.acceptedAnswers || []).forEach((acc) => {
+        if (y > PAGE.height - 60) { doc.addPage(); drawPageHeader(doc); y = 50; }
+        drawRect(doc, PAGE.margin, y, CONTENT_W, 20, '#D1FAE5', 3);
+        drawBorder(doc, PAGE.margin, y, CONTENT_W, 20, BRAND.success, 3);
+        doc.font('Helvetica').fillColor('#065F46')
+          .text(acc.answer_text, PAGE.margin + 8, y + 6, { width: CONTENT_W - 90, lineBreak: false });
         doc.font('Helvetica-Bold').fillColor(BRAND.success)
-          .text('Correct', badgeX, y + 6, { width: BADGE_W, align: 'right', lineBreak: false });
-      }
-      y += 23;
-    });
+          .text('Accepted', PAGE.margin + CONTENT_W - BADGE_W - 4, y + 6, { width: BADGE_W, align: 'right', lineBreak: false });
+        y += 23;
+      });
+    } else {
+      q.choices.forEach((choice, ci) => {
+        if (y > PAGE.height - 60) { doc.addPage(); drawPageHeader(doc); y = 50; }
+        const isCorrect = ci === q.correctChoice;
+        const bgColor = isCorrect ? '#D1FAE5' : BRAND.bg;
+        const borderColor = isCorrect ? BRAND.success : BRAND.border;
+        const textColor = isCorrect ? '#065F46' : BRAND.text;
+
+        drawRect(doc, PAGE.margin, y, CONTENT_W, 20, bgColor, 3);
+        drawBorder(doc, PAGE.margin, y, CONTENT_W, 20, borderColor, 3);
+
+        // Letter label
+        doc.fontSize(9).font('Helvetica-Bold').fillColor(textColor)
+          .text(`${letters[ci]}.`, PAGE.margin + 6, y + 6, { width: 18, lineBreak: false });
+
+        // Choice text — width capped so it never reaches the badge column
+        doc.font('Helvetica').fillColor(textColor)
+          .text(choice, PAGE.margin + 24, y + 6, { width: choiceTextW, lineBreak: false });
+
+        // Correct badge — pinned to the right edge
+        if (isCorrect) {
+          const badgeX = PAGE.margin + CONTENT_W - BADGE_W - 4;
+          doc.font('Helvetica-Bold').fillColor(BRAND.success)
+            .text('Correct', badgeX, y + 6, { width: BADGE_W, align: 'right', lineBreak: false });
+        }
+        y += 23;
+      });
+    }
 
     y += 8;
 
@@ -413,9 +427,12 @@ async function drawQuestionPages(doc, sessionData) {
     let correct = 0, incorrect = 0, unanswered = 0;
     sessionData.playerResults.forEach((p) => {
       const ans = p.answers[qi];
-      if (ans === undefined) unanswered++;
-      else if (ans === q.correctChoice) correct++;
-      else incorrect++;
+      if (ans === undefined || ans === '') {
+        unanswered++;
+      } else {
+        const isCorrect = q.type === 'short_answer' ? q.shortAnswerCorrectness?.[p.name] : ans === q.correctChoice;
+        if (isCorrect) correct++; else incorrect++;
+      }
     });
     const accuracy = pct(correct, totalPlayers);
 
@@ -450,9 +467,15 @@ async function drawQuestionPages(doc, sessionData) {
       .text('Player Responses', PAGE.margin, y);
     y += 12;
 
+    const isCorrectFor = (player) => {
+      const ans = player.answers[qi];
+      if (ans === undefined || ans === '') return false;
+      return q.type === 'short_answer' ? !!q.shortAnswerCorrectness?.[player.name] : ans === q.correctChoice;
+    };
+
     const sorted = [...sessionData.playerResults].sort((a, b) => {
-      const aCorrect = a.answers[qi] === q.correctChoice;
-      const bCorrect = b.answers[qi] === q.correctChoice;
+      const aCorrect = isCorrectFor(a);
+      const bCorrect = isCorrectFor(b);
       if (bCorrect !== aCorrect) return bCorrect ? 1 : -1;
       return a.name.localeCompare(b.name);
     });
@@ -483,11 +506,11 @@ async function drawQuestionPages(doc, sessionData) {
       drawBorder(doc, px, rowY, colW, ROW_H, BRAND.border, 3);
 
       const ans = player.answers[qi];
-      const answered = ans !== undefined;
-      const isCorrect = ans === q.correctChoice;
+      const answered = ans !== undefined && ans !== '';
+      const isCorrect = isCorrectFor(player);
       const dotColor = !answered ? BRAND.muted : isCorrect ? BRAND.success : BRAND.danger;
       const dotLabel = !answered ? '-' : isCorrect ? '+' : 'x';
-      const answerLetter = answered ? letters[ans] || '?' : '-';
+      const answerLetter = !answered ? '-' : (q.type === 'short_answer' ? String(ans).slice(0, 3) : (letters[ans] || '?'));
 
       // All elements share this vertical centre
       const midY = rowY + ROW_H / 2;
