@@ -162,7 +162,7 @@
               class="short-answer-input"
               placeholder="Type your answer..."
               :disabled="isAnswerRevealed || isAnswerSubmitting"
-              maxlength="200"
+              maxlength="100"
               @keyup.enter="submitShortAnswer"
             />
             <button
