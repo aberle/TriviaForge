@@ -2,9 +2,9 @@
   <Modal :isOpen="isOpen" @close="$emit('cancel')" title="Confirm Your Answer" size="medium">
     <template #default>
       <div class="answer-confirm-content">
-        <p class="selection-label">You selected:</p>
+        <p class="selection-label">You {{ isFreeText ? 'typed' : 'selected' }}:</p>
         <div class="selected-answer-display">
-          <strong class="answer-letter">{{ answerLetter }}.</strong>
+          <strong v-if="!isFreeText" class="answer-letter">{{ answerLetter }}.</strong>
           <span class="answer-text">{{ answerText }}</span>
         </div>
         <p class="confirmation-prompt">
@@ -41,15 +41,25 @@ const props = defineProps({
     type: Boolean,
     required: true
   },
-  /** Index of the selected answer (0-based) */
+  /** Index of the selected answer (0-based) — ignored when isFreeText is true */
   selectedIndex: {
     type: Number,
-    required: true
+    default: null
   },
-  /** Array of answer choice texts */
+  /** Array of answer choice texts — ignored when isFreeText is true */
   choices: {
     type: Array,
-    required: true
+    default: () => []
+  },
+  /** When true, selectedText is shown verbatim instead of indexing into choices */
+  isFreeText: {
+    type: Boolean,
+    default: false
+  },
+  /** The player's typed text — only used when isFreeText is true */
+  selectedText: {
+    type: String,
+    default: ''
   }
 });
 
@@ -61,7 +71,7 @@ const answerLetter = computed(() => {
 });
 
 const answerText = computed(() => {
-  return props.choices[props.selectedIndex] || '';
+  return props.isFreeText ? props.selectedText : (props.choices[props.selectedIndex] || '');
 });
 
 // Keyboard support - Enter to confirm, Esc to cancel

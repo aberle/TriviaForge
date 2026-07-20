@@ -7,6 +7,7 @@
       :duration="timerDuration"
       :active="!answerRevealed"
       :paused="timerPaused"
+      @expired="handleTimerExpired"
     />
 
     <!-- Question Image (if present) -->
@@ -21,8 +22,28 @@
 
     <h2 class="question-text">{{ currentQuestion?.text }}</h2>
 
+    <!-- Short Answer Question Layout -->
+    <div v-if="currentQuestion?.type === 'short_answer'" class="short-answer-container">
+      <input
+        v-model="shortAnswerText"
+        type="text"
+        maxlength="100"
+        class="short-answer-input"
+        placeholder="Type your answer..."
+        :disabled="answeredCurrentQuestion || answerRevealed"
+        @keyup.enter="submitShortAnswer"
+      />
+      <button
+        class="short-answer-submit"
+        :disabled="answeredCurrentQuestion || answerRevealed || !shortAnswerText.trim()"
+        @click="submitShortAnswer"
+      >
+        Submit Answer
+      </button>
+    </div>
+
     <!-- True/False Question Layout -->
-    <div v-if="isTrueFalse" class="true-false-container">
+    <div v-else-if="isTrueFalse" class="true-false-container">
       <button
         v-for="(choice, idx) in currentQuestion?.choices || []"
         :key="idx"
@@ -43,7 +64,7 @@
     </div>
 
     <!-- Multiple Choice Question Layout -->
-    <div v-else class="choices-container">
+    <div v-else-if="!isTrueFalse" class="choices-container">
       <button
         v-for="(choice, idx) in currentQuestion?.choices || []"
         :key="idx"
@@ -64,13 +85,18 @@
     <div v-if="answerRevealed" class="answer-feedback" :class="{ correct: playerGotCorrect, incorrect: !playerGotCorrect }">
       <span v-if="playerGotCorrect"><AppIcon name="check" size="md" /> Correct!</span>
       <span v-else><AppIcon name="x" size="md" /> Incorrect.</span>
-      The correct answer was: <strong>{{ currentQuestion?.choices[currentQuestion?.correctChoice] }}</strong>
+      <template v-if="currentQuestion?.type === 'short_answer'">
+        Accepted answers: <strong>{{ (currentQuestion?.acceptedAnswers || []).map(a => a.answer_text).join(', ') }}</strong>
+      </template>
+      <template v-else>
+        The correct answer was: <strong>{{ currentQuestion?.choices[currentQuestion?.correctChoice] }}</strong>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AppIcon from '@/components/common/AppIcon.vue';
 import CountdownTimer from '@/components/player/CountdownTimer.vue';
 
@@ -87,7 +113,7 @@ const props = defineProps({
   timerPaused: { type: Boolean, default: false }
 });
 
-defineEmits(['selectAnswer']);
+const emit = defineEmits(['selectAnswer', 'autoSubmitAnswer']);
 
 // Detect True/False questions
 const isTrueFalse = computed(() => {
@@ -96,6 +122,26 @@ const isTrueFalse = computed(() => {
      props.currentQuestion?.choices[0]?.toLowerCase() === 'true' &&
      props.currentQuestion?.choices[1]?.toLowerCase() === 'false');
 });
+
+const shortAnswerText = ref('');
+
+// Clear the input whenever a new question comes in
+watch(() => props.currentQuestion?.id, () => {
+  shortAnswerText.value = '';
+});
+
+const submitShortAnswer = () => {
+  if (props.answeredCurrentQuestion || props.answerRevealed || !shortAnswerText.value.trim()) return;
+  emit('selectAnswer', shortAnswerText.value.trim());
+};
+
+// Timeout auto-submit bypasses the confirm modal entirely — push whatever text is
+// currently typed (including empty) straight through via a separate event.
+const handleTimerExpired = () => {
+  if (props.currentQuestion?.type === 'short_answer' && !props.answeredCurrentQuestion && !props.answerRevealed) {
+    emit('autoSubmitAnswer', shortAnswerText.value.trim());
+  }
+};
 
 // Handle broken image
 const handleImageError = (event) => {
@@ -139,6 +185,57 @@ const handleImageError = (event) => {
   line-height: 1.3;
   word-wrap: break-word;
   color: var(--text-primary);
+}
+
+.short-answer-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.short-answer-input {
+  padding: 1rem 1.25rem;
+  font-size: 1.1rem;
+  background: var(--bg-overlay-20);
+  border: 3px solid var(--border-color);
+  border-radius: 15px;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.short-answer-input:focus {
+  border-color: var(--info-light);
+  outline: none;
+}
+
+.short-answer-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.short-answer-submit {
+  padding: 1rem;
+  font-size: 1.1rem;
+  font-weight: bold;
+  background: var(--primary-bg-40);
+  border: 1px solid var(--primary-light);
+  border-radius: 15px;
+  color: var(--info-light);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.short-answer-submit:hover:not(:disabled) {
+  background: var(--primary-bg-60);
+}
+
+.short-answer-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .choices-container {

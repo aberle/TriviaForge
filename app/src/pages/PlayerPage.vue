@@ -79,6 +79,7 @@
           :timerDuration="timerDuration"
           :timerPaused="timerPaused"
           @selectAnswer="selectAnswer"
+          @autoSubmitAnswer="autoSubmitShortAnswer"
         />
       </div>
 
@@ -165,6 +166,8 @@
       :isOpen="showAnswerConfirmModal"
       :selectedIndex="pendingAnswerIndex"
       :choices="currentQuestion?.choices || []"
+      :isFreeText="currentQuestion?.type === 'short_answer'"
+      :selectedText="pendingAnswerIndex"
       @confirm="confirmAnswer"
       @cancel="cancelAnswer"
     />
@@ -1170,7 +1173,7 @@ const confirmChangeUsername = () => {
   usernameInput.value = ''
 }
 
-const selectAnswer = async (idx) => {
+const selectAnswer = async (answer) => {
   if (answeredCurrentQuestion.value || answerRevealed.value) {
     console.log(`[ANSWER] Blocked - already answered (${answeredCurrentQuestion.value}) or revealed (${answerRevealed.value})`)
     return
@@ -1185,36 +1188,54 @@ const selectAnswer = async (idx) => {
     return
   }
 
-  console.log(`[ANSWER] Player selected answer ${idx}, showing confirmation modal`)
-  // Store the selected answer and show confirmation modal
-  pendingAnswerIndex.value = idx
-  selectedAnswer.value = idx // Show visual selection
+  const isShortAnswer = currentQuestion.value?.type === 'short_answer'
+  console.log(`[ANSWER] Player ${isShortAnswer ? 'typed' : 'selected'} answer "${answer}", showing confirmation modal`)
+  pendingAnswerIndex.value = answer
+  selectedAnswer.value = isShortAnswer ? null : answer // Visual selection only applies to MC/TF choice buttons
   showAnswerConfirmModal.value = true
 }
 
 const confirmAnswer = () => {
-  const idx = pendingAnswerIndex.value
-  if (idx === null) return
+  const answer = pendingAnswerIndex.value
+  if (answer === null) return
 
-  console.log(`[ANSWER] ✅ Submitting confirmed answer ${idx} for question ${currentQuestion.value.index}`)
+  console.log(`[ANSWER] ✅ Submitting confirmed answer "${answer}" for question ${currentQuestion.value.index}`)
   answeredCurrentQuestion.value = true
   answeredQuestions.add(currentQuestion.value.index)
 
   // Update history
   const historyItem = questionHistory.value.find(q => q.index === currentQuestion.value.index)
   if (historyItem) {
-    historyItem.playerChoice = idx
+    historyItem.playerChoice = answer
     // Clear missedWhileAway flag since player actually answered
     historyItem.missedWhileAway = false
   }
 
-  socket.emit('submitAnswer', { roomCode: currentRoomCode.value, choice: idx })
+  socket.emit('submitAnswer', { roomCode: currentRoomCode.value, choice: answer })
   statusMessage.value = 'Answer submitted! ✓'
   statusMessageType.value = 'success'
 
   // Close modal and clear pending answer
   showAnswerConfirmModal.value = false
   pendingAnswerIndex.value = null
+}
+
+const autoSubmitShortAnswer = (text) => {
+  if (answeredCurrentQuestion.value || answerRevealed.value || !currentQuestion.value) return
+
+  console.log(`[ANSWER] ⏱ Timeout auto-submitting "${text}" for question ${currentQuestion.value.index}`)
+  answeredCurrentQuestion.value = true
+  answeredQuestions.add(currentQuestion.value.index)
+
+  const historyItem = questionHistory.value.find(q => q.index === currentQuestion.value.index)
+  if (historyItem) {
+    historyItem.playerChoice = text
+    historyItem.missedWhileAway = false
+  }
+
+  socket.emit('submitAnswer', { roomCode: currentRoomCode.value, choice: text })
+  statusMessage.value = text ? 'Answer submitted! ✓' : 'Time expired — no answer submitted'
+  statusMessageType.value = text ? 'success' : 'warning'
 }
 
 const cancelAnswer = () => {
