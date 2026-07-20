@@ -298,7 +298,10 @@ export async function createSoloSession(req, res, next) {
  */
 export async function submitSoloAnswer(req, res, next) {
   const { id: sessionId } = req.params;
-  const { questionId, answerIndex, answerText, participantId } = req.body;
+  const { questionId, answerIndex, participantId } = req.body;
+  // Enforce the same length bound as the client-side short-answer input,
+  // since a crafted request can bypass the client's maxlength.
+  const answerText = typeof req.body.answerText === 'string' ? req.body.answerText.slice(0, 100) : req.body.answerText;
 
   if (questionId === undefined || !participantId || (answerIndex === undefined && answerText === undefined)) {
     return next(new BadRequestError('questionId, participantId, and either answerIndex or answerText are required'));

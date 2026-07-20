@@ -2418,7 +2418,11 @@ io.on('connection', (socket) => {
   });
 
   // Player submits answer
-  socket.on('submitAnswer', ({ roomCode, choice }) => {
+  socket.on('submitAnswer', ({ roomCode, choice: rawChoice }) => {
+    // Enforce the same length bound as the client-side short-answer input,
+    // since a crafted socket message can bypass the client's maxlength.
+    const choice = typeof rawChoice === 'string' ? rawChoice.slice(0, 100) : rawChoice;
+
     // Rate limiting check (v5.5.0)
     const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || socket.handshake.address || 'unknown';
     if (!checkSocketRateLimit(clientIP, 'answer')) {
