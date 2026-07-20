@@ -14,6 +14,7 @@
       >
         <option value="multiple_choice">Multiple Choice</option>
         <option value="true_false">True / False</option>
+        <option value="short_answer">Open-Ended / Short Answer</option>
       </select>
     </div>
 
@@ -90,13 +91,16 @@
     </div>
 
     <div class="choices-header">
-      <h3>Choices</h3>
+      <h3>{{ questionType === 'short_answer' ? 'Accepted Answers' : 'Choices' }}</h3>
       <div class="choice-buttons" v-if="questionType !== 'true_false'">
         <button @click="$emit('addChoice')" class="btn-add">+ Add</button>
         <button @click="$emit('removeChoice')" class="btn-remove">- Remove</button>
       </div>
       <span v-else class="true-false-hint">Fixed choices for True/False</span>
     </div>
+    <p v-if="questionType === 'short_answer'" class="short-answer-hint">
+      List every acceptable answer or common variation (e.g. "Paris", "City of Light").
+    </p>
 
     <div class="choices-container">
       <div
@@ -128,14 +132,14 @@
           :value="choice"
           @input="$emit('updateChoice', idx, $event.target.value)"
           type="text"
-          :placeholder="`Choice ${idx + 1}`"
+          :placeholder="questionType === 'short_answer' ? `Accepted answer ${idx + 1}` : `Choice ${idx + 1}`"
           :readonly="questionType === 'true_false'"
           :class="{ 'readonly': questionType === 'true_false' }"
         />
       </div>
     </div>
 
-    <div class="correct-choice-wrapper">
+    <div class="correct-choice-wrapper" v-if="questionType !== 'short_answer'">
       <label for="correctChoice">Correct Answer:</label>
       <select
         :value="correctChoice"
@@ -346,6 +350,13 @@ h2 {
 }
 
 .true-false-hint {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.short-answer-hint {
+  margin: 0 0 0.5rem 0;
   color: var(--text-tertiary);
   font-size: 0.85rem;
   font-style: italic;
