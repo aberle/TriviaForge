@@ -4,6 +4,14 @@ Completed feature history and planned future work. For active/in-progress develo
 
 ## Completed Features
 
+**v5.15.0 (Jul 2026) - Open-Ended (Short Answer) Questions**
+- [x] New `short_answer` question type — players type a free-text answer instead of picking from choices
+- [x] Automatic grading via fuzzy string matching (Levenshtein-based similarity) against admin-supplied accepted answers/synonyms
+- [x] Admin-configurable match strictness threshold in Quiz Options (default 85% similarity)
+- [x] Question Editor support: "Open-Ended / Short Answer" type with a reusable accepted-answers list (reuses the existing choice-list UI)
+- [x] Player-facing single-line text input with confirm-before-submit, plus a separate timeout auto-submit path that submits whatever's currently typed (only a truly empty field counts as no answer)
+- [x] Live multiplayer, solo play, presenter session breakdown, and CSV/PDF export all support the new question type end-to-end
+
 **v5.14.0 (Jul 2026) - Postgres 18, Dependency Updates & Backup File Import**
 - [x] Upgraded `docker-compose.yml` from `postgres:15` to `postgres:18` and the app base image from `node:22-alpine` to `node:24-alpine`
 - [x] Safe in-range npm dependency updates (Vite, Vue, pg, Express patch, and others); major-version bumps (Express 5, Pinia 4, Vue Router 5, etc.) deferred for a dedicated testing pass — see TODO.md

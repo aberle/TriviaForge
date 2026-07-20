@@ -1,8 +1,8 @@
 # TriviaForge - Active Development Tasks (2026)
 
 > **Purpose:** Current development priorities and pending tasks
-> **Last Updated:** 2026-07-18
-> **Version:** v5.14.0
+> **Last Updated:** 2026-07-20
+> **Version:** v5.15.0
 
 ---
 
@@ -32,6 +32,45 @@
 ---
 
 ## 🚀 Current Priorities (Active Development)
+
+### v5.15.0 Features - Open-Ended (Short Answer) Questions ✅ COMPLETE
+
+**Status:** ✅ COMPLETE
+**Priority:** HIGH
+**Completed:** 2026-07-20
+**Branch:** `feat/open-ended-answers`
+
+#### New Question Type ✅
+- [x] `short_answer` question type — players type a free-text answer instead of picking from choices
+- [x] Fuzzy-match auto-grading (Levenshtein-based similarity) against admin-supplied accepted answers/synonyms
+- [x] Admin-configurable match threshold in Quiz Options (default 85% similarity)
+- [x] Question Editor: "Open-Ended / Short Answer" type, reusing the existing choice-list UI relabeled "Accepted Answers"
+
+#### Player Experience ✅
+- [x] Single-line free-text input with confirm-before-submit modal (mirrors the existing multiple-choice confirm flow)
+- [x] Timeout auto-submit: whatever text is currently typed submits automatically when the countdown expires (bypassing the confirm modal); only a truly empty field counts as no answer
+- [x] Solo play support (text input, immediate grading, no leaked accepted answers)
+
+#### Presenter & Data ✅
+- [x] Session breakdown shows each player's typed response with correct/incorrect badges
+- [x] CSV and PDF export show accepted answers and per-player correctness for short-answer questions
+
+**Files Created:**
+- `app/init/18-short-answer-questions.sql` - Database migration (nullable `answer_id`, new `answer_text` column, match-threshold setting)
+
+**Files Modified:**
+- `app/src/utils/similarity.js` - `matchShortAnswer()` grading helper
+- `app/server.js` - Room-building, live reveal/history grading, progress endpoints, quiz options, answer length bound
+- `app/src/services/quiz.service.js`, `app/src/controllers/quiz.controller.js` - Accepted-answers handling on create/update/import
+- `app/src/controllers/solo.controller.js` - Solo play grading and results
+- `app/src/services/session.service.js`, `app/src/controllers/session.controller.js` - Correctness/typed-text persistence and read-time reconstruction
+- `app/src/components/admin/QuestionEditor.vue`, `QuizOptionsPanel.vue`, `QuestionBreakdown.vue` - Admin UI
+- `app/src/components/player/QuestionDisplay.vue`, `app/src/components/modals/AnswerConfirmModal.vue`, `app/src/pages/PlayerPage.vue` - Player UI
+- `app/src/pages/SoloPlayPage.vue`, `app/src/composables/useSoloGame.js` - Solo play UI
+- `app/src/services/export.service.js`, `app/src/services/pdfExport.service.js` - CSV/PDF export
+- `app/src/config/version.js` - Version bump to v5.15.0
+
+---
 
 ### v5.7.0 Features - Admin-Configurable Server URL ✅ COMPLETE
 
@@ -783,6 +822,7 @@ Add notification to presenter when all connected players have answered the curre
 
 ### Question Types & Media
 - [x] True/False question type - v5.0.0 ✅
+- [x] Open-Ended (Short Answer) question type with fuzzy-match auto-grading - v5.15.0 ✅
 - [x] Question images (upload + URL reference) - v5.0.0 ✅
 - [ ] Video/audio media support (future consideration)
 
@@ -868,5 +908,5 @@ Before marking a task as complete:
 
 **Archive:** See [archive/TODO-2025.md](archive/TODO-2025.md) for historical tasks and completed features from 2025.
 
-**Last Updated:** 2026-07-15 (v5.12.0)
+**Last Updated:** 2026-07-20 (v5.15.0)
 **Maintained By:** TriviaForge Development Team

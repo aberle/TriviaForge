@@ -2,7 +2,7 @@
 
 A production-ready, real-time interactive trivia game platform built with **Vue 3**, **Socket.IO**, and **PostgreSQL**. Designed for educators, event organizers, and trivia enthusiasts with robust connection stability, persistent player sessions, and estimated capacity for 50+ concurrent players.
 
-**Latest Release**: v5.14.0 - Postgres 18, Dependency Updates & Backup File Import (see [ROADMAP.md](ROADMAP.md) for full release history)
+**Latest Release**: v5.15.0 - Open-Ended (Short Answer) Questions (see [ROADMAP.md](ROADMAP.md) for full release history)
 
 ### Key Highlights
 
@@ -29,7 +29,8 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 - **Question Bank**: Centralized question management across all quizzes with search, filter, and archive capabilities
 - **Tag System**: Organize questions with customizable color-coded tags
 - **Duplicate Detection**: Find and manage duplicate questions with similarity-based detection and merge tools
-- **Question Types**: Support for Multiple Choice and True/False questions
+- **Question Types**: Support for Multiple Choice, True/False, and Open-Ended (Short Answer) questions
+- **Open-Ended Answer Grading**: Fuzzy-match auto-grading against admin-supplied accepted answers, with an admin-configurable match strictness threshold
 - **Image Support**: Add images to questions via file upload or external URL
 - **Timer Settings**: Configure per-quiz question timers and reveal delays for auto-mode
 - **Results Display Toggle**: Per-quiz option to show celebratory results podium with gold/silver/bronze when quiz completes
@@ -109,6 +110,7 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 - **Wake Lock Support**: Keeps mobile screens on during games (Chrome 84+, Safari 16.4+) with visual indicator
 - **Enhanced Connection Stability**: Infinite reconnection attempts with intelligent page visibility detection (30-second debounce)
 - **Real-time Feedback**: Instant answer submission and result display in live games
+- **Open-Ended Answers**: Type free-text answers for short-answer questions, with automatic grading; a timed-out answer auto-submits whatever's currently typed
 - **Answer Locking**: Prevents re-answering after submission (even on reconnection)
 - **Smart Reconnection**: Automatically restore progress when rejoining with full state preservation via RoomSessionID
 - **Progress Tracking**: Comprehensive modal showing detailed session statistics and question-by-question history with correct/incorrect/pending status (persists across disconnections)

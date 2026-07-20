@@ -4,9 +4,9 @@
  * Update this file to change version across the entire application
  */
 
-export const VERSION = '5.14.0'
-export const VERSION_NAME = 'Postgres 18, Dependency Updates & Backup Import'
-export const RELEASE_DATE = '2026-07-18'
+export const VERSION = '5.15.0'
+export const VERSION_NAME = 'Open-Ended (Short Answer) Questions'
+export const RELEASE_DATE = '2026-07-20'
 
 export default {
   VERSION,
