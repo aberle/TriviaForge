@@ -334,6 +334,9 @@ export async function getSession(req, res, next) {
 
     // Group answers by player and calculate statistics
     const playersMap = new Map();
+    // Per-question short-answer correctness, keyed by question_id -> { [displayName]: boolean }
+    // Built from the same participantsResult rows to avoid an extra per-question query.
+    const shortAnswerCorrectnessByQuestion = new Map();
     for (const row of participantsResult.rows) {
       if (!playersMap.has(row.display_name)) {
         playersMap.set(row.display_name, {
@@ -350,6 +353,11 @@ export async function getSession(req, res, next) {
         if (row.is_correct) {
           player.correct++;
         }
+
+        if (!shortAnswerCorrectnessByQuestion.has(row.question_id)) {
+          shortAnswerCorrectnessByQuestion.set(row.question_id, {});
+        }
+        shortAnswerCorrectnessByQuestion.get(row.question_id)[row.display_name] = !!row.is_correct;
       }
     }
 
@@ -361,6 +369,7 @@ export async function getSession(req, res, next) {
         sq.is_presented,
         sq.is_revealed,
         qs.question_text,
+        qs.question_type,
         qs.image_url,
         qs.id as question_id
       FROM session_questions sq
@@ -382,7 +391,7 @@ export async function getSession(req, res, next) {
       // Fetch answers for this question
       const answersResult = await query(
         `
-        SELECT answer_text, is_correct, display_order
+        SELECT id, answer_text, is_correct, display_order
         FROM answers
         WHERE question_id = $1
         ORDER BY display_order
@@ -392,13 +401,26 @@ export async function getSession(req, res, next) {
 
       const choices = answersResult.rows.map((a) => a.answer_text);
       const correctChoice = answersResult.rows.findIndex((a) => a.is_correct);
+      const type = row.question_type || 'multiple_choice';
 
-      questions.push({
+      const question = {
         text: row.question_text,
         imageUrl: row.image_url || null,
+        type,
         choices,
         correctChoice,
-      });
+      };
+
+      if (type === 'short_answer') {
+        question.acceptedAnswers = answersResult.rows.map((a) => ({
+          id: a.id,
+          answer_text: a.answer_text,
+        }));
+        question.shortAnswerCorrectness =
+          shortAnswerCorrectnessByQuestion.get(row.question_id) || {};
+      }
+
+      questions.push(question);
     }
 
     // Format response to match frontend expectations
@@ -588,6 +610,9 @@ async function getFullSessionData(sessionId) {
 
   // Group answers by player and calculate statistics
   const playersMap = new Map();
+  // Per-question short-answer correctness, keyed by question_id -> { [displayName]: boolean }
+  // Built from the same participantsResult rows to avoid an extra per-question query.
+  const shortAnswerCorrectnessByQuestion = new Map();
   for (const row of participantsResult.rows) {
     if (!playersMap.has(row.display_name)) {
       playersMap.set(row.display_name, {
@@ -604,6 +629,11 @@ async function getFullSessionData(sessionId) {
       if (row.is_correct) {
         player.correct++;
       }
+
+      if (!shortAnswerCorrectnessByQuestion.has(row.question_id)) {
+        shortAnswerCorrectnessByQuestion.set(row.question_id, {});
+      }
+      shortAnswerCorrectnessByQuestion.get(row.question_id)[row.display_name] = !!row.is_correct;
     }
   }
 
@@ -615,6 +645,7 @@ async function getFullSessionData(sessionId) {
       sq.is_presented,
       sq.is_revealed,
       qs.question_text,
+      qs.question_type,
       qs.image_url,
       qs.id as question_id
     FROM session_questions sq
@@ -634,7 +665,7 @@ async function getFullSessionData(sessionId) {
     // Fetch answers for this question
     const answersResult = await query(
       `
-      SELECT answer_text, is_correct, display_order
+      SELECT id, answer_text, is_correct, display_order
       FROM answers
       WHERE question_id = $1
       ORDER BY display_order
@@ -644,13 +675,26 @@ async function getFullSessionData(sessionId) {
 
     const choices = answersResult.rows.map((a) => a.answer_text);
     const correctChoice = answersResult.rows.findIndex((a) => a.is_correct);
+    const type = row.question_type || 'multiple_choice';
 
-    questions.push({
+    const question = {
       text: row.question_text,
       imageUrl: row.image_url || null,
+      type,
       choices,
       correctChoice,
-    });
+    };
+
+    if (type === 'short_answer') {
+      question.acceptedAnswers = answersResult.rows.map((a) => ({
+        id: a.id,
+        answer_text: a.answer_text,
+      }));
+      question.shortAnswerCorrectness =
+        shortAnswerCorrectnessByQuestion.get(row.question_id) || {};
+    }
+
+    questions.push(question);
   }
 
   return {
