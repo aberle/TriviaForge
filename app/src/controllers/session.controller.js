@@ -319,6 +319,7 @@ export async function getSession(req, res, next) {
         gp.display_name,
         pa.question_id,
         pa.answer_id,
+        pa.answer_text,
         sq.presentation_order,
         a.display_order as choice_index,
         pa.is_correct
@@ -348,7 +349,8 @@ export async function getSession(req, res, next) {
       }
       const player = playersMap.get(row.display_name);
       if (row.question_id && row.presentation_order !== null) {
-        player.answers[row.presentation_order] = row.choice_index;
+        player.answers[row.presentation_order] =
+          row.answer_text !== null ? row.answer_text : row.choice_index;
         player.answered++;
         if (row.is_correct) {
           player.correct++;
@@ -595,6 +597,7 @@ async function getFullSessionData(sessionId) {
       gp.display_name,
       pa.question_id,
       pa.answer_id,
+      pa.answer_text,
       sq.presentation_order,
       a.display_order as choice_index,
       pa.is_correct
@@ -624,7 +627,8 @@ async function getFullSessionData(sessionId) {
     }
     const player = playersMap.get(row.display_name);
     if (row.question_id && row.presentation_order !== null) {
-      player.answers[row.presentation_order] = row.choice_index;
+      player.answers[row.presentation_order] =
+        row.answer_text !== null ? row.answer_text : row.choice_index;
       player.answered++;
       if (row.is_correct) {
         player.correct++;
