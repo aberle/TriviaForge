@@ -13,7 +13,13 @@
           @error="$event.target.style.display = 'none'"
         />
       </div>
-      <div class="question-choices">
+      <div v-if="question.type === 'short_answer'" class="question-choices">
+        <div v-for="acc in question.acceptedAnswers" :key="acc.id" class="choice-item choice-correct">
+          {{ acc.answer_text }}
+          <span class="correct-indicator"><AppIcon name="check" size="sm" /> Accepted</span>
+        </div>
+      </div>
+      <div v-else class="question-choices">
         <div
           v-for="(choice, cIdx) in question.choices"
           :key="cIdx"
@@ -33,16 +39,21 @@
             v-for="player in playerResults"
             :key="player.name"
             :class="['player-response', {
-              'response-correct': player.answers[qIdx] === question.correctChoice,
-              'response-incorrect': player.answers[qIdx] !== undefined && player.answers[qIdx] !== question.correctChoice,
-              'response-unanswered': player.answers[qIdx] === undefined
+              'response-correct': isPlayerCorrect(question, player, player.answers[qIdx]),
+              'response-incorrect': player.answers[qIdx] !== undefined && player.answers[qIdx] !== '' && !isPlayerCorrect(question, player, player.answers[qIdx]),
+              'response-unanswered': player.answers[qIdx] === undefined || player.answers[qIdx] === ''
             }]"
           >
             <span class="player-name">{{ player.name }}:</span>
             <span class="player-answer">
-              <template v-if="player.answers[qIdx] !== undefined">
-                {{ String.fromCharCode(65 + player.answers[qIdx]) }}
-                <AppIcon v-if="player.answers[qIdx] === question.correctChoice" name="check" size="sm" class="answer-result" />
+              <template v-if="player.answers[qIdx] !== undefined && player.answers[qIdx] !== ''">
+                <template v-if="question.type === 'short_answer'">
+                  {{ player.answers[qIdx] }}
+                </template>
+                <template v-else>
+                  {{ String.fromCharCode(65 + player.answers[qIdx]) }}
+                </template>
+                <AppIcon v-if="isPlayerCorrect(question, player, player.answers[qIdx])" name="check" size="sm" class="answer-result" />
                 <AppIcon v-else name="x" size="sm" class="answer-result" />
               </template>
               <template v-else>
@@ -70,6 +81,14 @@ defineProps({
 });
 
 defineEmits(['toggleQuestion']);
+
+function isPlayerCorrect(question, player, answer) {
+  if (answer === undefined || answer === '') return false;
+  if (question.type === 'short_answer') {
+    return question.shortAnswerCorrectness?.[player.name] === true;
+  }
+  return answer === question.correctChoice;
+}
 </script>
 
 <style scoped>
