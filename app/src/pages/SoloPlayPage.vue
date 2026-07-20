@@ -142,7 +142,7 @@
           :startedAt="timerStartedAt"
           :duration="questionTimer"
           :active="!isAnswerRevealed"
-          @expired="handleTimerExpired"
+          @expired="handleTimerExpired(shortAnswerText)"
         />
 
         <!-- Question Display -->
@@ -154,8 +154,28 @@
 
           <h3 class="question-text">{{ currentQuestion?.text }}</h3>
 
+          <!-- Short Answer Input -->
+          <div v-if="currentQuestion?.type === 'short_answer'" class="short-answer-container">
+            <input
+              v-model="shortAnswerText"
+              type="text"
+              class="short-answer-input"
+              placeholder="Type your answer..."
+              :disabled="isAnswerRevealed || isAnswerSubmitting"
+              maxlength="200"
+              @keyup.enter="submitShortAnswer"
+            />
+            <button
+              class="btn-submit-short-answer"
+              :disabled="isAnswerRevealed || isAnswerSubmitting || !shortAnswerText.trim()"
+              @click="submitShortAnswer"
+            >
+              Submit
+            </button>
+          </div>
+
           <!-- Answer Choices -->
-          <div class="choices-container">
+          <div v-else class="choices-container">
             <button
               v-for="(choice, idx) in currentQuestion?.choices || []"
               :key="idx"
@@ -321,6 +341,7 @@ function handleLogout() {
 
 const playerNameInput = ref('')
 const selectedAnswer = ref(null)
+const shortAnswerText = ref('')
 
 // Alert modal state
 const showAlertModal = ref(false)
@@ -365,12 +386,13 @@ async function startSelectedQuiz(quiz) {
   try {
     await startQuiz(quiz.id, playerNameInput.value)
     selectedAnswer.value = null
+    shortAnswerText.value = ''
   } catch (error) {
     showAlert(error.message, 'Error')
   }
 }
 
-// Select an answer
+// Select an answer (multiple-choice / true-false)
 async function selectAnswer(idx) {
   if (isAnswerRevealed.value || isAnswerSubmitting.value) return
 
@@ -384,9 +406,24 @@ async function selectAnswer(idx) {
   }
 }
 
+// Submit a typed short-answer response
+async function submitShortAnswer() {
+  if (isAnswerRevealed.value || isAnswerSubmitting.value) return
+
+  const text = shortAnswerText.value.trim()
+  if (!text) return
+
+  try {
+    await submitAnswer(-1, text)
+  } catch (error) {
+    console.error('Error submitting answer:', error)
+  }
+}
+
 // Advance to next question and reset UI state
 function goToNextQuestion() {
   selectedAnswer.value = null
+  shortAnswerText.value = ''
   advanceToNextQuestion()
 }
 </script>
@@ -629,6 +666,52 @@ function goToNextQuestion() {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.short-answer-container {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.short-answer-input {
+  flex: 1;
+  padding: 1rem 1.25rem;
+  background: var(--bg-overlay-10);
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 1rem;
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+}
+
+.short-answer-input:focus {
+  outline: none;
+  border-color: var(--secondary-light);
+}
+
+.short-answer-input:disabled {
+  opacity: 0.9;
+  cursor: default;
+}
+
+.btn-submit-short-answer {
+  padding: 0.75rem 1.5rem;
+  background: var(--secondary-bg-20);
+  color: var(--secondary-light);
+  border: 1px solid var(--secondary-light);
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-submit-short-answer:hover:not(:disabled) {
+  background: var(--secondary-bg-30);
+}
+
+.btn-submit-short-answer:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .choice-btn {

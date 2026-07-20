@@ -132,9 +132,10 @@ export function useSoloGame() {
 
   /**
    * Submit an answer for the current question
-   * @param {number} answerIndex - The index of the selected answer
+   * @param {number} answerIndex - The index of the selected answer (MC/TF); -1 for short-answer or no answer
+   * @param {string} [answerText] - The typed answer text (short-answer questions only)
    */
-  async function submitAnswer(answerIndex) {
+  async function submitAnswer(answerIndex, answerText) {
     if (!sessionId.value || !currentQuestion.value) {
       throw new Error('No active session or question')
     }
@@ -149,6 +150,7 @@ export function useSoloGame() {
       const response = await post(`/api/solo/sessions/${sessionId.value}/answer`, {
         questionId: currentQuestion.value.id,
         answerIndex,
+        answerText,
         participantId: participantId.value
       })
 
@@ -160,7 +162,8 @@ export function useSoloGame() {
         isCorrect: data.isCorrect,
         correctChoice: data.correctChoice,
         correctAnswerText: data.correctAnswerText,
-        selectedIndex: answerIndex
+        selectedIndex: answerIndex,
+        selectedText: answerText
       }
 
       // Update score
@@ -188,12 +191,23 @@ export function useSoloGame() {
 
   /**
    * Handle timer expiration (no answer submitted)
+   * @param {string} [currentTypedText] - For short-answer questions, whatever text the
+   *   player had typed but not yet submitted when the timer expired. Submitted as-is
+   *   (mirroring live multiplayer's "submit partial text on timeout" behavior). Ignored
+   *   for MC/TF questions.
    */
-  async function handleTimerExpired() {
+  async function handleTimerExpired(currentTypedText) {
     if (isAnswerRevealed.value) return
 
-    // Submit with null/no answer (treated as wrong)
-    await submitAnswer(-1) // -1 indicates no answer
+    const isShortAnswer = currentQuestion.value?.type === 'short_answer'
+
+    if (isShortAnswer) {
+      // Submit whatever text was typed (possibly empty, which grades as incorrect)
+      await submitAnswer(-1, currentTypedText || '')
+    } else {
+      // Submit with no answer (treated as wrong)
+      await submitAnswer(-1) // -1 indicates no answer
+    }
   }
 
   /**
