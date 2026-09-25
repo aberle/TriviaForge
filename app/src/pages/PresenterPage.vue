@@ -413,7 +413,7 @@ const resumeSession = async () => {
   }
   const session = incompleteSessions.value.find(s => s.filename === selectedSessionFilename.value)
   const confirmed = await showConfirm(
-    `Resume session for "${session.quizTitle}" (original room: ${session.roomCode})?\n\nPlayers will need to rejoin with their original names to keep their progress.`,
+    `Resume session for "${session.quizTitle}" in room ${session.roomCode}?\n\nPlayers will need to rejoin with their original names to keep their progress.`,
     'Resume Session'
   )
   if (confirmed) {
@@ -875,6 +875,9 @@ const setupSocketListeners = () => {
     // Presenter manages multiple rooms from a list - they'll click to view the room they want
   })
 
+  // Resuming a session that is already live: just open that room
+  socketInstance.on('sessionAlreadyLive', ({ roomCode }) => viewRoom(roomCode))
+
   socketInstance.on('roomCreated', ({ roomCode, quizFilename, quizTitle, questions, rounds: serverRounds, quizCompleted: serverQuizCompleted, currentQuestionIndex: serverCurrentQuestionIndex, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, isResumed, originalRoomCode, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
     currentRoomCode.value = roomCode
     currentQuizFilename.value = quizFilename // Store for reconnection
@@ -934,7 +937,7 @@ const setupSocketListeners = () => {
     }
 
     if (isResumed) {
-      showAlert(`Session resumed!\n\nNew room code: ${roomCode}\nOriginal room: ${originalRoomCode}\n\nPlayers should rejoin with their original names.`, 'Session Resumed')
+      showAlert(`Session resumed!\n\nRoom code: ${roomCode} (the same as before, so existing QR codes and links still work)\n\nPlayers should rejoin with their original names.`, 'Session Resumed')
     }
   })
 

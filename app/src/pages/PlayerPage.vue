@@ -30,6 +30,18 @@
         </div>
       </div>
 
+      <!-- The room vanished under us (server restarted): we keep asking until the presenter reopens it -->
+      <div v-if="roomWaiting && !showConnectionLostBanner" class="connection-lost-banner room-waiting-banner">
+        <div class="banner-content">
+          <AppIcon name="hourglass" size="lg" class="icon" />
+          <div class="text">
+            <strong>Room {{ currentRoomCode }} isn't open right now</strong>
+            <p>Waiting for the presenter to reopen it. You'll be brought back automatically.</p>
+          </div>
+          <Button @click="handleLeaveRoomClick" variant="danger" size="small" class="reconnect-btn">Leave</Button>
+        </div>
+      </div>
+
       <!-- Missed Questions Banner -->
       <div v-if="missedQuestionsBanner" class="missed-questions-banner">
         <AppIcon name="alert-triangle" size="md" /> You have missed Questions while Away
@@ -337,6 +349,10 @@ let urlRoomPending = null // a ?room= link waiting to hear whether this device a
 // flashing by. A link to a different room (QR code) is not a reconnect.
 const REJOIN_WINDOW_MINUTES = 5
 const RECONNECT_GIVE_UP_MS = 12000
+// A room that disappears while we're in it (the server restarted) may be reopened by the presenter
+// shortly: keep asking this often, for this long, before giving up
+const ROOM_WAIT_RETRY_MS = 3000
+const ROOM_WAIT_GIVE_UP_MS = 10 * 60 * 1000
 const initialRejoin = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem('trivia_last_room') || 'null')
@@ -378,6 +394,9 @@ const missedQuestionsBanner = ref(false)
 const lastJoinRoomAttempt = ref(0) // Track last joinRoom call to prevent duplicates
 const joinRoomInProgress = ref(false) // Track if joinRoom is being processed
 const showConnectionLostBanner = ref(false)
+const roomWaiting = ref(false) // in a room the server no longer has, retrying until it comes back
+let roomWaitTimer = null
+let roomWaitSince = 0
 const reconnectionAttempts = ref(0)
 
 // Login form
@@ -597,6 +616,35 @@ const handleVisibilityChange = () => {
       }
     }, 30 * 1000) // 30 second debounce before marking as away
   }
+}
+
+// The server no longer has the room we are in (it restarted). Keep trying to rejoin, quietly, until the
+// presenter resumes it, rather than dropping the player to the landing page.
+const startWaitingForRoom = () => {
+  if (!roomWaiting.value) {
+    roomWaiting.value = true
+    roomWaitSince = Date.now()
+  }
+  clearTimeout(roomWaitTimer)
+  roomWaitTimer = setTimeout(() => {
+    if (!roomWaiting.value) return
+    if (Date.now() - roomWaitSince > ROOM_WAIT_GIVE_UP_MS) {
+      stopWaitingForRoom()
+      uiStore.addNotification(`Room ${currentRoomCode.value} is no longer available.`, 'warning', 6000)
+      handleLeaveRoom()
+      return
+    }
+    if (inRoom.value && currentRoomCode.value && currentUsername.value && currentDisplayName.value) {
+      emitJoinRoom(currentRoomCode.value, currentUsername.value, currentDisplayName.value, 'waiting for room')
+    }
+    startWaitingForRoom()
+  }, ROOM_WAIT_RETRY_MS)
+}
+
+const stopWaitingForRoom = () => {
+  roomWaiting.value = false
+  clearTimeout(roomWaitTimer)
+  roomWaitTimer = null
 }
 
 // Setup socket event listeners - called on mount and after reconnect
@@ -861,6 +909,7 @@ const setupSocketListeners = () => {
   })
 
   socket.on('roomClosed', () => {
+    stopWaitingForRoom()
     localStorage.removeItem('trivia_last_room')
     uiStore.addNotification('Room closed by presenter.', 'info')
     handleLeaveRoom()
@@ -881,6 +930,11 @@ const setupSocketListeners = () => {
     if (joinRoomInProgress.value) {
       console.log('[CONNECTION] Clearing joinRoom flag due to room error')
       joinRoomInProgress.value = false
+    }
+    // In a room that has vanished (a server restart): wait for the presenter to reopen it
+    if (msg === 'Room not found.' && inRoom.value && currentRoomCode.value) {
+      startWaitingForRoom()
+      return
     }
     // Clear stale room from localStorage so we don't retry on next page load
     if (msg === 'Room not found.') {
@@ -932,6 +986,7 @@ const setupSocketListeners = () => {
   })
 
   socket.on('roomInfo', (info) => {
+    if (roomWaiting.value) stopWaitingForRoom() // the room is back
     quizTitle.value = info?.quizTitle || ''
     // The server knows the player by this name in this room (it may differ from what they typed)
     if (info?.displayName) {
@@ -1294,6 +1349,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  clearTimeout(roomWaitTimer)
   // CRITICAL: Don't disconnect socket on unmount!
   // Socket is module-scoped and should persist across page refreshes/remounts
   // Disconnecting here causes duplicate socket creation on mobile refresh
@@ -1790,6 +1846,7 @@ const confirmLeaveRoom = () => {
 }
 
 const handleLeaveRoom = () => {
+  stopWaitingForRoom()
   // They left on purpose: a refresh must not put them back in this room
   localStorage.removeItem('trivia_last_room')
   lockedDisplayName.value = ''

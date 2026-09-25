@@ -23,7 +23,7 @@ Three layers, from fastest to most thorough. All are plain Node scripts (no test
 
 | Command (from `app/`) | What it covers | Needs |
 |---|---|---|
-| `npm run test:component` | Podium ties, round components (SSR), admin round handlers with a fake backend | Nothing (no server, DB or browser) |
+| `npm run test:component` | Podium ties, round components (SSR), admin round handlers with a fake backend, which live rooms get saved on shutdown | Nothing (no server, DB or browser) |
 | `npm run test:rounds` | The round socket protocol: answer-leak scan, timers, races, presenter-only controls, resume, persistence | A running server |
 | `npm run test:e2e` | The real UI in headless Chrome (player, presenter, display, admin drag and drop, joining, reconnecting) plus a round-less quiz and the client composable | A running server and Chrome |
 
@@ -79,6 +79,7 @@ TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 | `solo-mode` | Solo play exists only with `SOLO_MODE=true`: links, `/solo` page, quiz badges and `/api/solo` all disappear when it's off (adapts to the server's mode) |
 | `presenter-display-flow` | A whole two-round quiz through the presenter page, a phone, bots and the display page |
 | `legacy-live-game` | A quiz without rounds plays as before; short answers graded; rejoining a completed room (sockets only) |
+| `resume-session` | Resuming a saved session reuses its original room code and session (no duplicate), players rejoin with their answers, resuming a live session points at its room, and a new room is never given a saved session's room code (sockets only) |
 | `use-rounds-composable` | The client `useRounds` composable against real sockets (no browser) |
 
 Shared plumbing is in `e2e/lib/`: `harness.js` (suite runner, quiz/room/bot/page helpers, cleanup),

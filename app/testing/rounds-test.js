@@ -338,9 +338,19 @@ async function main() {
 
     section('Resume restores completed rounds and short-answer text');
     const resumer = track(connect('resumer', `pres2-${RUN_ID}`));
-    resumer.socket.emit('resumeSession', { sessionFilename: `session_${completed.filename}.json`, userId: 1, isRootAdmin: true });
-    const resumed = await resumer.waitFor('roomCreated');
+    const sessionFile = `session_${completed.filename}.json`;
+    // While the original room is still live, resuming just points the presenter at it
+    resumer.socket.emit('resumeSession', { sessionFilename: sessionFile, userId: 1, isRootAdmin: true });
+    const alreadyLive = await resumer.waitFor('sessionAlreadyLive');
+    check('resuming a session that is still live points at its room', alreadyLive.roomCode === roomCode);
+    // Closing the room saves it and frees the code, like a server restart would
+    clients[0].socket.emit('closeRoom', { roomCode, userId: 1, isRootAdmin: true });
+    await sleep(800);
+    mark = resumer.mark();
+    resumer.socket.emit('resumeSession', { sessionFilename: sessionFile, userId: 1, isRootAdmin: true });
+    const resumed = await resumer.waitFor('roomCreated', { since: mark });
     resumedRoomCode = resumed.roomCode;
+    check('the resumed room keeps the ORIGINAL room code', resumedRoomCode === roomCode, `${roomCode} -> ${resumedRoomCode}`);
     const resumedState = await resumer.waitFor('roundState');
     check('resumed room is between rounds with both rounds completed', resumedState.phase === 'ended' && resumedState.completed.join() === '0,1' && resumedState.nextRoundIndex === null);
     const resumedStandings = resumedState.lastEnded.standings.map((s) => `${s.name}:${s.totalScore}`).join();
@@ -349,6 +359,19 @@ async function main() {
     resumer.socket.emit('startRound', { roomCode: resumedRoomCode, roundIndex: 0 });
     await resumer.waitFor('roomError', { since: mark });
     check('a resumed room does not replay finished rounds', true);
+
+    if (process.env.DATABASE_URL) {
+      const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+      try {
+        // Saving the resumed room updates the original session: no second row is created
+        clients[0].socket.emit('closeRoom', { roomCode: resumedRoomCode, userId: 1, isRootAdmin: true });
+        await sleep(800);
+        const sessions = await pool.query('SELECT id, original_session_id FROM game_sessions WHERE quiz_id = $1', [quizId]);
+        check('resuming did not create a second session', sessions.rows.length === 1 && sessions.rows[0].original_session_id === null, JSON.stringify(sessions.rows));
+      } finally {
+        await pool.end();
+      }
+    }
   } finally {
     section('Cleanup');
     for (const code of [roomCode, resumedRoomCode].filter(Boolean)) {

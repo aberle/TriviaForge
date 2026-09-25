@@ -487,12 +487,12 @@ If you're running a fresh install with no existing data, skip all of this — Po
 
 ### Resuming an Interrupted Session
 
-If a session is interrupted (server restart, connection loss, etc.):
+If a session is interrupted (server restart, connection loss, etc.). Live sessions are saved every 2 minutes and again when the server shuts down normally (`docker compose restart`, `docker stop`, Ctrl+C), so only a crash can leave a resumed session up to 2 minutes behind:
 
 1. Go to Presenter or Admin page
 2. Find the session in "Resume Session" or "Incomplete Sessions" dropdown
 3. Click "Resume"
-4. A new room code is generated
+4. The session comes back with its **original room code** (existing QR codes and links keep working) and is saved over the original session, not as a new one
 5. Players rejoin with their **original names** to restore their progress
 6. Continue from where you left off
 
@@ -568,7 +568,7 @@ docker-compose exec -e TEST_PLAYERS=30 app node testing/test-runner.js
 
 Run these from `app/`:
 
-- `npm run test:component`: podium ties, round components and the admin round handlers. No server needed.
+- `npm run test:component`: podium ties, round components, the admin round handlers and which rooms are saved on shutdown. No server needed.
 - `npm run test:rounds`: drives a running server over real Socket.IO connections (presenter, players, display) through a two-round quiz and checks answer leaks, timer expiry, reconnects, resume and persistence. About 30 seconds.
 - `npm run test:e2e`: exercises the real player, presenter, display and admin pages in headless Chrome (needs Chrome).
 

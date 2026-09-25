@@ -35,6 +35,7 @@ import { env } from './src/config/environment.js';
 // Import services (Phase 3: Service Layer)
 import { roomService } from './src/services/room.service.js';
 import { sessionService } from './src/services/session.service.js';
+import { sessionHasAnswers, roomIsWorthSaving } from './src/utils/roomState.js';
 import { quizService } from './src/services/quiz.service.js';
 import { autoModeService } from './src/services/autoMode.service.js';
 import { initializeAdminPassword } from './src/services/startup.service.js';
@@ -298,13 +299,18 @@ const findExistingPlayer = (room, playerID, username) => {
 const DISPLAY_NAME_TAKEN_MESSAGE = 'That display name is already taken in this room. Please choose a different name.';
 
 // --------------------
-// Helper: check if session has answers
+// Helper: pick an unused room code
 // --------------------
-const sessionHasAnswers = (room) => {
-  return Object.values(room.players).some(player =>
-    player.answers && Object.keys(player.answers).length > 0
-  );
-};
+// A random 4-digit room code that no live room and no saved session uses (null if every code is taken)
+async function pickFreeRoomCode() {
+  const taken = await sessionService.getSavedRoomCodes();
+  const free = [];
+  for (let code = 1000; code <= 9999; code++) {
+    const text = String(code);
+    if (!taken.has(text) && !roomService.liveRooms[text]) free.push(text);
+  }
+  return free.length ? free[Math.floor(Math.random() * free.length)] : null;
+}
 
 // --------------------
 // Helper: broadcast quiz results to players/displays (v5.6.0)
@@ -1609,8 +1615,9 @@ io.on('connection', (socket) => {
   });
 
   // Presenter creates a room
-  socket.on('createRoom', async ({ roomCode, quizFilename, userId }) => {
+  socket.on('createRoom', async ({ roomCode: requestedRoomCode, quizFilename, userId }) => {
     try {
+      let roomCode = requestedRoomCode;
       // Extract quiz ID from filename format (quiz_123.json → 123)
       const quizId = quizFilename.includes('_')
         ? parseInt(quizFilename.split('_')[1].replace('.json', ''))
@@ -1628,6 +1635,20 @@ io.on('connection', (socket) => {
 
       // Convert database format to legacy format for compatibility (includes rounds)
       const quizData = quizService.formatQuizForRoom(quiz, quizFilename);
+
+      // A code that is live (someone else's room) or belongs to a saved session must not be reused:
+      // saving the new room would overwrite that session. The presenter reconnecting to their own
+      // live room keeps their code; otherwise a free one is picked and sent back in roomCreated.
+      const roomWithCode = roomService.liveRooms[roomCode];
+      const isOwnRoom = roomWithCode && roomWithCode.quizFilename === quizFilename && roomWithCode.createdBy === (userId || 1);
+      if (!isOwnRoom && (roomWithCode || await sessionService.isRoomCodeSaved(roomCode))) {
+        const freeCode = await pickFreeRoomCode();
+        if (!freeCode) {
+          return socket.emit('roomError', 'No unused room codes are left. Delete some old sessions from the session history to free room codes.');
+        }
+        console.log(`[PRESENTER] Room code ${roomCode} is already in use; using ${freeCode} instead`);
+        roomCode = freeCode;
+      }
 
       // Check if room already exists (presenter reconnecting)
       if (roomService.liveRooms[roomCode]) {
@@ -1764,10 +1785,19 @@ io.on('connection', (socket) => {
         console.log(`[RESUME] Session found - Quiz ID: ${session.quiz_id}, Original Room: ${session.original_room_code}`);
       }
 
-      // Generate new room code for resumed session
-      const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+      // The session keeps its original room code: the QR code and the room code players already have
+      // still work, and saving updates the original session instead of creating a second one
+      const roomCode = session.original_room_code;
+      if (roomService.liveRooms[roomCode]) {
+        // Room codes are unique across saved sessions, so a live room with this code is this session
+        // (resumed already, or never shut down): take the presenter there instead of building it twice
+        if (env.isVerboseLogging) {
+          console.log(`[RESUME] Session ${sessionId} is already live as room ${roomCode}`);
+        }
+        return socket.emit('sessionAlreadyLive', { roomCode });
+      }
       if (env.isVerboseLogging) {
-        console.log(`[RESUME] Generated new room code: ${roomCode}`);
+        console.log(`[RESUME] Reusing original room code: ${roomCode}`);
       }
 
       // Load the quiz data from database
@@ -1878,7 +1908,11 @@ io.on('connection', (socket) => {
         createdBy: session.created_by || 1, // Admin user ID who created the session
         resumedAt: new Date().toISOString(),
         originalRoomCode: session.original_room_code,
-        originalSessionId: sessionId
+        // Same defaults as a new room (without showResults a resumed quiz never showed its final results)
+        autoMode: false,
+        questionTimer: null,
+        revealDelay: null,
+        showResults: quiz.showResults !== false
       };
 
       // v5.16.0: rounds resume between rounds. Completed rounds come from the revealed
@@ -4123,3 +4157,44 @@ app.use((req, res, next) => {
 
   server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 })();
+
+// --------------------
+// Graceful shutdown: save every live room before exiting (docker stop/restart, Ctrl+C), so a
+// restart loses nothing instead of up to 2 minutes of play (the auto-save interval)
+// --------------------
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[SHUTDOWN] ${signal} received: saving live rooms before exit`);
+
+  // Never hang: the container gets ~10 s before it is killed anyway
+  setTimeout(() => {
+    console.error('[SHUTDOWN] Timed out; exiting without finishing');
+    process.exit(1);
+  }, 8000).unref();
+
+  sessionService.clearAllAutoSaves();
+  const saves = Object.entries(roomService.liveRooms).map(async ([roomCode, room]) => {
+    autoModeService.cleanup(roomCode);
+    roundService.cleanup(roomCode);
+    if (!roomIsWorthSaving(room)) return;
+    try {
+      // Like closing a room: stays resumable unless the quiz was already completed
+      room.status = room.status === 'completed' ? 'completed' : 'in_progress';
+      room.completedAt = room.status === 'completed' ? room.completedAt || new Date().toISOString() : null;
+      await saveSession(roomCode, room);
+      console.log(`[SHUTDOWN] Saved room ${roomCode}`);
+    } catch (err) {
+      console.error(`[SHUTDOWN] Could not save room ${roomCode}:`, err.message);
+    }
+  });
+  await Promise.allSettled(saves);
+
+  io.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 1000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

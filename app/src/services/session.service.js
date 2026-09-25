@@ -497,6 +497,25 @@ class SessionService {
   }
 
   /**
+   * Room codes are unique across every saved session (game_sessions.room_code), and saving a room
+   * overwrites the session that already has its code, so a new room must not reuse one.
+   * @returns {Promise<Set<string>>} Every room code that belongs to a saved session
+   */
+  async getSavedRoomCodes() {
+    const result = await query('SELECT room_code FROM game_sessions');
+    return new Set(result.rows.map((row) => row.room_code));
+  }
+
+  /**
+   * @param {string} roomCode
+   * @returns {Promise<boolean>} Whether a saved session already has this room code
+   */
+  async isRoomCodeSaved(roomCode) {
+    const result = await query('SELECT 1 FROM game_sessions WHERE room_code = $1 LIMIT 1', [roomCode]);
+    return result.rows.length > 0;
+  }
+
+  /**
    * Clear all auto-save intervals
    */
   clearAllAutoSaves() {

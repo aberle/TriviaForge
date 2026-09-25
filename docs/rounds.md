@@ -29,7 +29,7 @@ A quiz can be split into rounds. In a round, players see **every question at onc
 - **`finalizeRound` is synchronous and idempotent**, shared by the presenter's End Round and the timer, so a timer racing a submit or a double click finalizes once. A late submit gets `roundSubmitted { success: false, ended: true }`.
 - **Timers** live in `roundService.timers` (not on the room). The server closes a timed round `TIMER_GRACE_MS` (2 s) after `endsAt` to absorb latency; clients count down to `endsAt` and auto-submit at zero. Times are sent with `serverNow` so clients correct for clock skew.
 - **Identity.** Drafts and submissions are keyed by `username`, because `room.players` is keyed by socket ID, which changes on reconnect.
-- **Resume.** A round counts as completed when all its questions were revealed. A resumed room starts between rounds; a round that was open is played again (open-round drafts are not persisted).
+- **Resume.** A round counts as completed when all its questions were revealed. A resumed room starts between rounds; a round that was open is played again. Answers a player had picked but not submitted are not persisted, so they start that round again. Players still in the room's page wait automatically and rejoin when the presenter resumes it.
 - **Data.** `quiz_rounds` (per quiz), `quiz_questions.round_id`, and per-session snapshots `session_rounds` and `session_questions.round_order`, because editing a quiz recreates its question rows.
 
 ## Socket events

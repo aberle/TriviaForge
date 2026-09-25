@@ -134,6 +134,9 @@ async function setup({ quiz, chrome: wantChrome }) {
     login: { token: admin.token, user: admin.user },
     pages,
 
+    /** Call the admin API as the logged-in admin (returns the fetch Response). */
+    api: (method, path, body) => admin.request(method, path, body),
+
     /** Create a quiz through the API. */
     async createQuiz({ title = `E2E ${uid()}`, description = 'created by an end-to-end test', rounds, questions }) {
       const res = await admin.request('POST', '/api/quizzes', { title, description, rounds, questions });
@@ -183,9 +186,10 @@ async function setup({ quiz, chrome: wantChrome }) {
       const code = String(1000 + Math.floor(Math.random() * 9000));
       const since = env.presenter.mark();
       env.presenter.emit('createRoom', { roomCode: code, quizFilename: `quiz_${quizId}.json`, userId: admin.user.id || 1 });
-      await env.presenter.waitFor('roomCreated', { since, pred: (p) => p.roomCode === code });
-      rooms.push(code);
-      return code;
+      // The server picks another code if this one is taken by a saved session, so use what it answers with
+      const created = await env.presenter.waitFor('roomCreated', { since });
+      rooms.push(created.roomCode);
+      return created.roomCode;
     },
 
     /** Display names of the (non-spectator) players currently in a room. */
