@@ -44,7 +44,7 @@
             <router-link to="/player" class="link-secondary">
               <AppIcon name="users" size="sm" /> Multiplayer
             </router-link>
-            <router-link to="/solo" class="link-secondary">
+            <router-link v-if="soloEnabled" to="/solo" class="link-secondary">
               <AppIcon name="gamepad-2" size="sm" /> Solo Play
             </router-link>
           </div>
@@ -96,6 +96,9 @@ import StatsNavbar from '@/components/stats/StatsNavbar.vue'
 import StatsSummary from '@/components/stats/StatsSummary.vue'
 import StatsCharts from '@/components/stats/StatsCharts.vue'
 import GameHistoryTable from '@/components/stats/GameHistoryTable.vue'
+import { useServerConfig } from '@/composables/useServerConfig.js'
+
+const { soloEnabled } = useServerConfig()
 
 const { post } = useApi()
 

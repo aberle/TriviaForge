@@ -4,9 +4,9 @@
     <p class="waiting-message">{{ inRoom ? 'Waiting for the presenter to start the quiz...' : 'Enter your name and room code to begin playing.' }}</p>
 
     <!-- Solo Practice Link (when not in room) -->
-    <div v-if="!inRoom" class="solo-practice-section">
+    <div v-if="!inRoom && soloEnabled" class="solo-practice-section">
       <p class="solo-hint">or practice on your own</p>
-      <RouterLink to="/solo" class="solo-practice-btn">
+      <RouterLink v-if="soloEnabled" to="/solo" class="solo-practice-btn">
         <span class="solo-icon">🎯</span>
         <span class="solo-text">Solo Practice Mode</span>
       </RouterLink>
@@ -34,6 +34,10 @@
 </template>
 
 <script setup>
+import { useServerConfig } from '@/composables/useServerConfig.js'
+
+const { soloEnabled } = useServerConfig()
+
 defineProps({
   inRoom: { type: Boolean, required: true },
   recentRooms: { type: Array, required: true }

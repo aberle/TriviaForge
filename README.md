@@ -102,7 +102,7 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 
 ### For Players
 - **Mobile-Optimized Interface**: Responsive design that works seamlessly on all devices (HTTP and HTTPS)
-- **Solo Play Mode**: Self-study mode without a presenter - browse solo-enabled quizzes and play at your own pace
+- **Solo Play Mode** (opt-in, `SOLO_MODE=true`): Self-study mode without a presenter - browse solo-enabled quizzes and play at your own pace
 - **Per-Question Timer**: Countdown timer for each question with visual progress bar
 - **Immediate Feedback**: See correct/incorrect status immediately after answering in solo mode
 - **Results Summary**: Detailed breakdown of performance with per-question review after completing a quiz
@@ -732,6 +732,7 @@ Environment variables can be set in multiple ways (listed by precedence, highest
 | `NODE_ENV` | Environment mode (`development` or `production`) | `production` | No |
 | `DEBUG_MODE` | Enable comprehensive debug logging (server-side) | `false` | No |
 | `GUEST_ONLY_MODE` | Players join live games with just a display name (no usernames or accounts) | `false` | No |
+| `SOLO_MODE` | Enable Solo Play (self-study without a presenter). When `false`, the Solo links, page and `/api/solo` endpoints are unavailable | `false` | No |
 | `TZ` | Timezone for timestamps | `America/New_York` | No |
 | `APP_NAME` | Application name | `TriviaForge` | No |
 | `SOCKET_RATE_WINDOW_MS` | Socket.IO rate limit window (ms) | `60000` (1 min) | No |

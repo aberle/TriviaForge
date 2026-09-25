@@ -34,7 +34,7 @@
       >
         <AppIcon name="users" size="sm" /> Multiplayer
       </RouterLink>
-      <RouterLink
+      <RouterLink v-if="soloEnabled"
         to="/solo"
         class="nav-link"
         :class="{ 'nav-link--active': route.path.startsWith('/solo') }"
@@ -87,7 +87,7 @@
       >
         <AppIcon name="users" size="sm" /> Multiplayer
       </RouterLink>
-      <RouterLink
+      <RouterLink v-if="soloEnabled"
         to="/solo"
         class="nav-link"
         :class="{ 'nav-link--active': route.path.startsWith('/solo') }"
@@ -114,6 +114,9 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth.js'
 import AppIcon from '@/components/common/AppIcon.vue'
+import { useServerConfig } from '@/composables/useServerConfig.js'
+
+const { soloEnabled } = useServerConfig()
 
 defineProps({
   showLogout: { type: Boolean, default: false }

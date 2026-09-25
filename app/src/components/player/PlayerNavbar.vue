@@ -34,7 +34,7 @@
         <AppIcon name="bar-chart-3" size="sm" /> My Stats
       </RouterLink>
 
-      <RouterLink to="/solo" class="nav-link" :class="{ 'nav-link--active': route.path === '/solo' }">
+      <RouterLink v-if="soloEnabled" to="/solo" class="nav-link" :class="{ 'nav-link--active': route.path === '/solo' }">
         <AppIcon name="gamepad-2" size="sm" /> Solo
       </RouterLink>
     </div>
@@ -72,7 +72,7 @@
         <AppIcon name="bar-chart-3" size="sm" /> My Stats
       </RouterLink>
 
-      <RouterLink to="/solo" class="nav-link" :class="{ 'nav-link--active': route.path === '/solo' }" @click="$emit('toggleMenu')">
+      <RouterLink v-if="soloEnabled" to="/solo" class="nav-link" :class="{ 'nav-link--active': route.path === '/solo' }" @click="$emit('toggleMenu')">
         <AppIcon name="gamepad-2" size="sm" /> Solo
       </RouterLink>
 
@@ -113,6 +113,9 @@ import { RouterLink, useRoute } from 'vue-router';
 import ThemeSelector from './ThemeSelector.vue';
 import AppIcon from '@/components/common/AppIcon.vue';
 import { useAuthStore } from '@/stores/auth.js';
+import { useServerConfig } from '@/composables/useServerConfig.js'
+
+const { soloEnabled } = useServerConfig()
 
 const route = useRoute();
 const authStore = useAuthStore();

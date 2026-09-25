@@ -65,9 +65,7 @@ npm run test:e2e -- --no-browser      # skip the suites that need Chrome
 TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 ```
 
-**Guest-only mode.** The join suite adapts to the server's `GUEST_ONLY_MODE` (it checks the
-normal join form when off and the display-name-only form when on). To cover both, run it twice, once
-against a server started with `GUEST_ONLY_MODE=true`. The other suites work in either mode.
+**Server modes.** The join suite adapts to `GUEST_ONLY_MODE` (normal join form when off, display-name-only form when on) and the solo suite adapts to `SOLO_MODE`. To cover both settings, run those suites twice, the second time against a server started with the flag set (for example `npm run test:e2e -- join` and `npm run test:e2e -- solo`). The other suites work in any mode.
 
 ### The e2e suites (`testing/e2e/`)
 
@@ -78,6 +76,7 @@ against a server started with `GUEST_ONLY_MODE=true`. The other suites work in e
 | `join-and-identity` | Unique display names, races, keeping the original name, QR link behaviour, guest-only vs normal join form |
 | `reconnect` | Refresh shows "Reconnecting" instead of the landing page, fallback when the room is closed or the server is unreachable, leaving on purpose |
 | `admin-authoring` | Round headers/badge, rename keeps the time limit, drag questions within and between rounds with the drop indicators |
+| `solo-mode` | Solo play exists only with `SOLO_MODE=true`: links, `/solo` page, quiz badges and `/api/solo` all disappear when it's off (adapts to the server's mode) |
 | `presenter-display-flow` | A whole two-round quiz through the presenter page, a phone, bots and the display page |
 | `legacy-live-game` | A quiz without rounds plays as before; short answers graded; rejoining a completed room (sockets only) |
 | `use-rounds-composable` | The client `useRounds` composable against real sockets (no browser) |

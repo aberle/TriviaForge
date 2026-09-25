@@ -22,6 +22,7 @@ const SUITES = [
   { file: 'join-and-identity.e2e.js', browser: true },
   { file: 'reconnect.e2e.js', browser: true },
   { file: 'admin-authoring.e2e.js', browser: true },
+  { file: 'solo-mode.e2e.js', browser: true },
   { file: 'presenter-display-flow.e2e.js', browser: true },
   { file: 'legacy-live-game.e2e.js', browser: false },
   { file: 'use-rounds-composable.e2e.js', browser: false },

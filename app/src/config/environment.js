@@ -61,6 +61,10 @@ export const env = {
   // Guest-only mode: players join live games with just a display name (no usernames or
   // accounts). Off by default.
   guestOnly: parseBoolean(process.env[ENV_VARS.GUEST_ONLY_MODE], false),
+
+  // Solo play (self-study without a presenter): the pages, links and /api/solo endpoints exist only
+  // when this is set. Off by default.
+  soloMode: parseBoolean(process.env[ENV_VARS.SOLO_MODE], false),
   verboseLogging: parseBoolean(process.env[ENV_VARS.VERBOSE_LOGGING], false),
 
   // Socket.IO Rate Limiting (v5.5.0)

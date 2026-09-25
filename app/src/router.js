@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from './stores/auth.js'
+import { loadServerConfig, useServerConfig } from './composables/useServerConfig.js'
 
 // Actual page components
 import LoginPage from './pages/LoginPage.vue'
@@ -68,8 +69,14 @@ const router = createRouter({
 })
 
 // Navigation guard for authentication
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
+
+  // Solo play only exists when the server enables it
+  if (to.name === 'solo') {
+    await loadServerConfig()
+    if (!useServerConfig().soloEnabled.value) return next({ name: 'login' })
+  }
 
   if (to.meta.requiresAuth && !authStore.token) {
     // Redirect to login if authentication is required but user is not logged in

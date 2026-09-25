@@ -64,7 +64,7 @@
             <span class="quiz-count">{{ quiz.questionCount || 0 }} questions</span>
             <span class="quiz-badges">
               <span v-if="quiz.availableLive !== false" class="badge badge-live" title="Available for Live Games">Live</span>
-              <span v-if="quiz.availableSolo !== false" class="badge badge-solo" title="Available for Solo Play">Solo</span>
+              <span v-if="soloEnabled && quiz.availableSolo !== false" class="badge badge-solo" title="Available for Solo Play">Solo</span>
               <span v-if="quiz.showResults !== false" class="badge badge-results" title="Show Results After Quiz">Results</span>
               <span v-if="quiz.roundCount > 0" class="badge badge-info badge-rounds" title="This quiz is split into rounds">{{ quiz.roundCount }} {{ quiz.roundCount === 1 ? 'round' : 'rounds' }}</span>
             </span>
@@ -79,7 +79,7 @@
               <AppIcon :name="quiz.availableLive !== false ? 'check-square' : 'square'" size="sm" />
               <span>Available for Live</span>
             </button>
-            <button class="menu-item" @click="toggleAvailability(quiz, 'solo')">
+            <button v-if="soloEnabled" class="menu-item" @click="toggleAvailability(quiz, 'solo')">
               <AppIcon :name="quiz.availableSolo !== false ? 'check-square' : 'square'" size="sm" />
               <span>Available for Solo</span>
             </button>
@@ -102,6 +102,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import AppIcon from '@/components/common/AppIcon.vue';
+import { useServerConfig } from '@/composables/useServerConfig.js';
+
+const { soloEnabled } = useServerConfig();
 
 const props = defineProps({
   quizTitle: { type: String, required: true },

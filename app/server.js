@@ -358,7 +358,7 @@ const broadcastQuizResults = (roomCode, room) => {
 
 // Public, non-sensitive server settings the UI needs before anyone logs in
 app.get('/api/config', (req, res) => {
-  res.json({ guestOnly: env.guestOnly });
+  res.json({ guestOnly: env.guestOnly, soloMode: env.soloMode });
 });
 
 // CSRF token endpoint - GET is excluded from CSRF protection
@@ -426,8 +426,13 @@ app.use('/api/questions', (req, res, next) => {
 });
 app.use('/api/questions', questionBankRoutes);
 
-// Solo play routes (public, no auth required) - v5.4.0
-app.use('/api/solo', soloRoutes);
+// Solo play routes (public, no auth required) - v5.4.0. Only available when SOLO_MODE=true.
+app.use('/api/solo', (req, res, next) => {
+  if (!env.soloMode) {
+    return res.status(404).json({ success: false, error: 'Solo play is not enabled on this server', code: 'SOLO_DISABLED' });
+  }
+  next();
+}, soloRoutes);
 
 // Player stats routes (authenticated players) - v5.8.0
 app.use('/api/stats', statsRoutes);

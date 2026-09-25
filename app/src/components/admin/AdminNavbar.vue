@@ -14,7 +14,7 @@
       <router-link to="/player" class="nav-link" :class="{ 'nav-link--active': $route.path === '/player' }">
         <AppIcon name="users" size="sm" /> Player
       </router-link>
-      <router-link to="/solo" class="nav-link" :class="{ 'nav-link--active': $route.path === '/solo' }">
+      <router-link v-if="soloEnabled" to="/solo" class="nav-link" :class="{ 'nav-link--active': $route.path === '/solo' }">
         <AppIcon name="gamepad-2" size="sm" /> Solo
       </router-link>
       <router-link to="/display" class="nav-link" :class="{ 'nav-link--active': $route.path === '/display' }">
@@ -54,7 +54,7 @@
       <router-link to="/player" class="nav-link" :class="{ 'nav-link--active': $route.path === '/player' }" @click="$emit('toggle-menu')">
         <AppIcon name="users" size="sm" /> Player
       </router-link>
-      <router-link to="/solo" class="nav-link" :class="{ 'nav-link--active': $route.path === '/solo' }" @click="$emit('toggle-menu')">
+      <router-link v-if="soloEnabled" to="/solo" class="nav-link" :class="{ 'nav-link--active': $route.path === '/solo' }" @click="$emit('toggle-menu')">
         <AppIcon name="gamepad-2" size="sm" /> Solo
       </router-link>
       <router-link to="/display" class="nav-link" :class="{ 'nav-link--active': $route.path === '/display' }" @click="$emit('toggle-menu')">
@@ -75,6 +75,9 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import AppIcon from '@/components/common/AppIcon.vue';
+import { useServerConfig } from '@/composables/useServerConfig.js'
+
+const { soloEnabled } = useServerConfig()
 
 defineProps({
   username: { type: String, default: 'Admin' },

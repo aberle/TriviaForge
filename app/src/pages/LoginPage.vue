@@ -134,7 +134,7 @@
           <AppIcon name="users" size="lg" /> Join as Player
         </RouterLink>
 
-        <RouterLink to="/solo" class="solo-link">
+        <RouterLink v-if="soloEnabled" to="/solo" class="solo-link">
           <AppIcon name="user" size="lg" /> Solo Practice
         </RouterLink>
       </div>
@@ -152,6 +152,9 @@ import { useTheme } from '@/composables/useTheme.js'
 import Button from '@/components/common/Button.vue'
 import FormInput from '@/components/common/FormInput.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
+import { useServerConfig } from '@/composables/useServerConfig.js'
+
+const { soloEnabled } = useServerConfig()
 
 const router = useRouter()
 const authStore = useAuthStore()

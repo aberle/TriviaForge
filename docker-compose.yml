@@ -41,6 +41,8 @@ services:
       DEBUG_MODE: ${DEBUG_MODE:-false}
       # Guest-only mode: players join with just a display name (no usernames or accounts)
       GUEST_ONLY_MODE: ${GUEST_ONLY_MODE:-false}
+      # Solo play (self-study without a presenter) is disabled unless this is true
+      SOLO_MODE: ${SOLO_MODE:-false}
       VERBOSE_LOGGING: ${VERBOSE_LOGGING:-false}
       DATABASE_URL: postgres://trivia:trivia@db:5432/trivia
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}

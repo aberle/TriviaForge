@@ -35,7 +35,7 @@
         <AppIcon name="users" size="sm" />
         Player
       </RouterLink>
-      <RouterLink
+      <RouterLink v-if="soloEnabled"
         to="/solo"
         class="nav-link"
         :class="{ 'nav-link--active': $route.path === '/solo' }"
@@ -104,7 +104,7 @@
         <AppIcon name="users" size="sm" />
         Player
       </RouterLink>
-      <RouterLink
+      <RouterLink v-if="soloEnabled"
         to="/solo"
         class="nav-link"
         :class="{ 'nav-link--active': $route.path === '/solo' }"
@@ -137,6 +137,9 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from '@/components/common/AppIcon.vue'
+import { useServerConfig } from '@/composables/useServerConfig.js'
+
+const { soloEnabled } = useServerConfig()
 
 defineProps({
   currentRoomCode: { type: String, default: null },
