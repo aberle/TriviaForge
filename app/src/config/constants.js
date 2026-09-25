@@ -339,6 +339,14 @@ export const QUIZ_CONSTRAINTS = {
   MAX_QUIZ_TITLE_LENGTH: 100,
 };
 
+/** Limits for quiz rounds (v5.16.0). A round with no time limit is ended by the presenter. */
+export const ROUND_CONSTRAINTS = {
+  MAX_ROUNDS: 50,
+  MAX_TITLE_LENGTH: 100,
+  MIN_TIME_LIMIT_SECONDS: 10,
+  MAX_TIME_LIMIT_SECONDS: 3600,
+};
+
 // ============================================================================
 // RATE LIMITING
 // ============================================================================
@@ -425,6 +433,7 @@ export const ENV_VARS = {
   HOST_IP: 'HOST_IP',
   SESSION_TIMEOUT: 'SESSION_TIMEOUT',
   DEBUG_MODE: 'DEBUG_MODE',
+  GUEST_ONLY_MODE: 'GUEST_ONLY_MODE',
   VERBOSE_LOGGING: 'VERBOSE_LOGGING',
   CSRF_SECRET: 'CSRF_SECRET',
   TZ: 'TZ',

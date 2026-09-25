@@ -10,7 +10,6 @@
         v-if="quizResultsData && !isQuestionDisplaying"
         :players="quizResultsData.players"
         :totalQuestions="quizResultsData.totalQuestions"
-        :classAverage="quizResultsData.classAverage"
       />
 
       <!-- Quiz Complete Screen (v5.6.0) - shown for ALL quizzes on completion -->
@@ -24,6 +23,15 @@
           Check your <strong>Progress</strong> to see how you did!
         </p>
       </div>
+
+      <!-- Rounds (v5.16.0): the round's questions while it runs, then the leaderboard -->
+      <RoundProjector
+        v-else-if="(roundPhase === 'open' && roundCurrent) || (roundPhase === 'ended' && roundLastEnded)"
+        :phase="roundPhase"
+        :current="roundCurrent"
+        :progress="roundProgress"
+        :lastEnded="roundLastEnded"
+      />
 
       <!-- Waiting State -->
       <div v-else-if="!isQuestionDisplaying" class="waiting-display">
@@ -124,6 +132,7 @@ import { useRoute } from 'vue-router'
 import { useSocket } from '@/composables/useSocket.js'
 import { useUIStore } from '@/stores/ui.js'
 import { useTheme } from '@/composables/useTheme.js'
+import { useRounds } from '@/composables/useRounds.js'
 import Modal from '@/components/common/Modal.vue'
 import Button from '@/components/common/Button.vue'
 import FormInput from '@/components/common/FormInput.vue'
@@ -131,9 +140,12 @@ import ThemeToggle from '@/components/display/ThemeToggle.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import CountdownTimer from '@/components/player/CountdownTimer.vue'
 import GameResults from '@/components/player/GameResults.vue'
+import RoundProjector from '@/components/rounds/RoundProjector.vue'
 
 const route = useRoute()
 const socket = useSocket()
+const rounds = useRounds(socket)
+const { phase: roundPhase, current: roundCurrent, progress: roundProgress, lastEnded: roundLastEnded } = rounds
 const uiStore = useUIStore()
 
 // Initialize theme for DisplayPage (grey theme default)
@@ -348,8 +360,8 @@ onMounted(() => {
       questionDisplayTimeout.value = null
     }
 
-    // If results are coming, show a countdown
-    if (data.showResults) {
+    // If results are coming, show a countdown (not when rejoining an already-completed quiz)
+    if (data.showResults && !data.restored) {
       resultsCountdown.value = 5
       if (countdownInterval) clearInterval(countdownInterval)
       countdownInterval = setInterval(() => {
@@ -376,6 +388,7 @@ onMounted(() => {
 
   // Listen for room closed
   socket.on('roomClosed', () => {
+    rounds.reset()
     quizResultsData.value = null
     quizCompleted.value = false
     isQuestionDisplaying.value = false
@@ -411,6 +424,9 @@ onMounted(() => {
       }
     }
   })
+
+  // v5.16.0: round events (roundState / roundStarted / roundProgress / roundEnded)
+  rounds.attach()
 
   // Handle connection errors
   socket.on('connect_error', (error) => {

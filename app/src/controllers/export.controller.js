@@ -12,16 +12,31 @@ import { VERSION } from '../config/version.js';
 import { generateTextHash } from '../utils/similarity.js';
 import { sendSuccess } from '../utils/responses.js';
 import { BadRequestError, NotFoundError } from '../utils/errors.js';
+import { validateRounds } from '../utils/validators.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Fetch all questions for a quiz, with answers and tags.
+ * Fetch a quiz's rounds in play order (v5.16.0). Empty for a quiz without rounds.
+ * @returns {Promise<Array<{id: number, title: string, timeLimitSeconds: number|null}>>}
  */
-async function fetchQuizQuestions(quizId) {
+async function fetchQuizRounds(quizId) {
+  const result = await query(
+    'SELECT id, title, time_limit_seconds FROM quiz_rounds WHERE quiz_id = $1 ORDER BY round_order',
+    [quizId]
+  );
+  return result.rows.map((r) => ({ id: r.id, title: r.title, timeLimitSeconds: r.time_limit_seconds }));
+}
+
+/**
+ * Fetch all questions for a quiz, with answers and tags.
+ * When the quiz has rounds, each question carries the zero-based `roundIndex` of its round.
+ */
+async function fetchQuizQuestions(quizId, rounds = []) {
+  const roundIndexById = new Map(rounds.map((r, i) => [r.id, i]));
   const result = await query(
     `SELECT q.id, q.question_text, q.question_type, q.image_url,
-            qq.question_order,
+            qq.question_order, qq.round_id,
             COALESCE(
               json_agg(DISTINCT jsonb_build_object('name', t.name)) FILTER (WHERE t.name IS NOT NULL),
               '[]'
@@ -31,7 +46,7 @@ async function fetchQuizQuestions(quizId) {
      LEFT JOIN question_tags qt ON qt.question_id = q.id
      LEFT JOIN tags t ON t.id = qt.tag_id
      WHERE qq.quiz_id = $1
-     GROUP BY q.id, q.question_text, q.question_type, q.image_url, qq.question_order
+     GROUP BY q.id, q.question_text, q.question_type, q.image_url, qq.question_order, qq.round_id
      ORDER BY qq.question_order`,
     [quizId]
   );
@@ -46,6 +61,7 @@ async function fetchQuizQuestions(quizId) {
         questionText: q.question_text,
         questionType: q.question_type,
         imageUrl: q.image_url || null,
+        ...(rounds.length > 0 && { roundIndex: roundIndexById.get(q.round_id) ?? rounds.length - 1 }),
         tags: (q.tags || []).map((t) => t.name).filter(Boolean),
         answers: answers.rows.map((a) => ({
           text: a.answer_text,
@@ -115,16 +131,24 @@ export async function exportQuizzesJSON(req, res, next) {
       quizRows = result.rows;
     }
 
+    // `rounds` (and each question's `roundIndex`) are only present for quizzes that have rounds,
+    // so exports of round-less quizzes keep their original shape.
     const quizzes = await Promise.all(
-      quizRows.map(async (quiz) => ({
-        title: quiz.title,
-        description: quiz.description || '',
-        availableLive: quiz.available_live,
-        availableSolo: quiz.available_solo,
-        showResults: quiz.show_results,
-        answerDisplayTimeout: quiz.answer_display_timeout,
-        questions: await fetchQuizQuestions(quiz.id),
-      }))
+      quizRows.map(async (quiz) => {
+        const rounds = await fetchQuizRounds(quiz.id);
+        return {
+          title: quiz.title,
+          description: quiz.description || '',
+          availableLive: quiz.available_live,
+          availableSolo: quiz.available_solo,
+          showResults: quiz.show_results,
+          answerDisplayTimeout: quiz.answer_display_timeout,
+          ...(rounds.length > 0 && {
+            rounds: rounds.map(({ title, timeLimitSeconds }) => ({ title, timeLimitSeconds })),
+          }),
+          questions: await fetchQuizQuestions(quiz.id, rounds),
+        };
+      })
     );
 
     const totalQuestions = quizzes.reduce((sum, q) => sum + q.questions.length, 0);
@@ -235,6 +259,17 @@ export async function importQuizzesJSON(req, res, next) {
       throw new BadRequestError('Export file contains no quizzes');
     }
 
+    // v5.16.0: check every quiz's rounds before creating anything, so a bad file can't leave a
+    // half-imported library. Rounds map onto the questions that will actually be imported.
+    for (const quiz of data.quizzes) {
+      if (!quiz.title) continue;
+      const importable = (quiz.questions || []).filter((question) => question.questionText);
+      const check = validateRounds(quiz.rounds, importable);
+      if (!check.valid) {
+        throw new BadRequestError(`Invalid rounds in quiz "${quiz.title}": ${check.error}`);
+      }
+    }
+
     const summary = { quizzesCreated: 0, questionsCreated: 0, questionsReused: 0 };
 
     for (const quiz of data.quizzes) {
@@ -255,6 +290,17 @@ export async function importQuizzesJSON(req, res, next) {
       );
       const quizId = quizResult.rows[0].id;
       summary.quizzesCreated++;
+
+      // Rounds (optional): create them first so questions can point at their round
+      const roundIds = [];
+      for (let i = 0; i < (quiz.rounds || []).length; i++) {
+        const round = quiz.rounds[i];
+        const roundResult = await query(
+          'INSERT INTO quiz_rounds (quiz_id, round_order, title, time_limit_seconds) VALUES ($1, $2, $3, $4) RETURNING id',
+          [quizId, i + 1, (round.title || '').trim(), round.timeLimitSeconds || null]
+        );
+        roundIds.push(roundResult.rows[0].id);
+      }
 
       let order = 0;
       for (const question of quiz.questions || []) {
@@ -301,10 +347,10 @@ export async function importQuizzesJSON(req, res, next) {
           }
         }
 
-        // Link question to quiz
+        // Link question to quiz (and to its round, if the quiz has rounds)
         await query(
-          'INSERT INTO quiz_questions (quiz_id, question_id, question_order) VALUES ($1, $2, $3)',
-          [quizId, questionId, order++]
+          'INSERT INTO quiz_questions (quiz_id, question_id, question_order, round_id) VALUES ($1, $2, $3, $4)',
+          [quizId, questionId, order++, roundIds[question.roundIndex] ?? null]
         );
       }
     }

@@ -42,6 +42,7 @@ class QuizService {
           qs.image_url,
           qs.image_type,
           qq.question_order,
+          qq.round_id,
           a.id as answer_id,
           a.answer_text,
           a.is_correct,
@@ -66,6 +67,7 @@ class QuizService {
             imageUrl: row.image_url || null,
             imageType: row.image_type || null,
             order: row.question_order,
+            roundId: row.round_id,
             choices: [],
           });
         }
@@ -82,12 +84,27 @@ class QuizService {
 
       const questions = Array.from(questionsMap.values()).sort((a, b) => a.order - b.order);
 
+      // Rounds (v5.16.0): each question gets the zero-based index of its round
+      const roundsResult = await client.query(
+        'SELECT id, title, time_limit_seconds FROM quiz_rounds WHERE quiz_id = $1 ORDER BY round_order',
+        [quizId]
+      );
+      const rounds = roundsResult.rows.map((r) => ({
+        title: r.title,
+        timeLimitSeconds: r.time_limit_seconds,
+      }));
+      const roundIndexById = new Map(roundsResult.rows.map((r, i) => [r.id, i]));
+      for (const q of questions) {
+        q.roundIndex = roundIndexById.has(q.roundId) ? roundIndexById.get(q.roundId) : null;
+      }
+
       return {
         id: quiz.id,
         title: quiz.title,
         description: quiz.description,
         answerDisplayTimeout: quiz.answer_display_timeout,
         createdAt: quiz.created_at,
+        rounds,
         questions,
       };
     } finally {
@@ -112,7 +129,7 @@ class QuizService {
    * Format quiz for Socket.IO room (legacy format)
    * @param {Object} quiz - Quiz from database
    * @param {string} quizFilename - Original filename
-   * @returns {Object} Formatted quiz data
+   * @returns {Object} Formatted quiz data. `rounds` is empty for a quiz without rounds.
    */
   formatQuizForRoom(quiz, quizFilename) {
     return {
@@ -135,7 +152,39 @@ class QuizService {
         }
         return base;
       }),
+      rounds: this.buildRoomRounds(quiz),
     };
+  }
+
+  /**
+   * Build the playable rounds for a live room (v5.16.0).
+   * Each round lists the indexes of its questions in the room's question array. Empty rounds
+   * are dropped (nothing to play) and the rest are renumbered. A question without a round
+   * (shouldn't happen after a normal save) joins the last round so it is never unreachable.
+   * @param {Object} quiz - Quiz from getQuizById ({ rounds, questions[].roundIndex })
+   * @returns {Array<{index: number, title: string, timeLimitSeconds: number|null, questionIndexes: number[]}>}
+   */
+  buildRoomRounds(quiz) {
+    const rounds = quiz.rounds || [];
+    const playable = [];
+
+    rounds.forEach((round, i) => {
+      const questionIndexes = [];
+      quiz.questions.forEach((q, idx) => {
+        const owner = Number.isInteger(q.roundIndex) ? q.roundIndex : rounds.length - 1;
+        if (owner === i) questionIndexes.push(idx);
+      });
+      if (questionIndexes.length === 0) return;
+
+      playable.push({
+        index: playable.length,
+        title: round.title || `Round ${playable.length + 1}`,
+        timeLimitSeconds: round.timeLimitSeconds || null,
+        questionIndexes,
+      });
+    });
+
+    return playable;
   }
 
   /**

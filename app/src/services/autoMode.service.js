@@ -514,13 +514,9 @@ class AutoModeService {
           })
           .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
-        const totalCorrect = players.reduce((sum, p) => sum + p.score, 0);
-        const classAverage = players.length > 0 ? parseFloat((totalCorrect / players.length).toFixed(1)) : 0;
-
         io.to(roomCode).emit('quizResults', {
           players,
           totalQuestions,
-          classAverage,
           showResults: true
         });
       }, 5000);

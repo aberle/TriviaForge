@@ -2,8 +2,8 @@
   <div class="join-section">
     <h3>Join Room</h3>
 
-    <!-- Username Input or Display -->
-    <div v-if="!savedUsername" class="username-input-section">
+    <!-- Username Input or Display (skipped in guest-only mode: no username or account) -->
+    <div v-if="!guestOnly && !savedUsername" class="username-input-section">
       <label for="playerUsername">Username</label>
       <input
         id="playerUsername"
@@ -15,7 +15,7 @@
       <p class="form-hint">This will be your account name</p>
     </div>
 
-    <div v-else class="username-display-section">
+    <div v-else-if="!guestOnly" class="username-display-section">
       <label>Username (Account)</label>
       <div class="username-display">
         <div class="username-value">{{ savedUsername }}</div>
@@ -29,9 +29,13 @@
       :value="displayNameInput"
       type="text"
       placeholder="Name shown in game"
+      :readonly="displayNameLocked"
+      :class="{ 'display-name-locked': displayNameLocked }"
       @input="$emit('update:displayNameInput', $event.target.value)"
     />
-    <p class="form-hint">This is what other players will see</p>
+    <p class="form-hint">
+      {{ displayNameLocked ? "You've already joined this room, so your name can't be changed." : 'This is what other players will see' }}
+    </p>
 
     <label for="roomCodeManual">Room Code</label>
     <input
@@ -43,7 +47,7 @@
     />
 
     <button class="btn-primary" @click="$emit('joinRoom')">Join Room</button>
-    <button class="btn-secondary" @click="$emit('manageAccount')">Manage Account</button>
+    <button v-if="!guestOnly" class="btn-secondary" @click="$emit('manageAccount')">Manage Account</button>
   </div>
 </template>
 
@@ -52,13 +56,22 @@ defineProps({
   savedUsername: { type: String, default: null },
   usernameInput: { type: String, required: true },
   displayNameInput: { type: String, required: true },
-  roomCodeInput: { type: String, required: true }
+  roomCodeInput: { type: String, required: true },
+  // Guest-only mode (server setting): only a display name is needed
+  guestOnly: { type: Boolean, default: false },
+  // The player has already joined the room entered: their display name is filled in and can't be edited
+  displayNameLocked: { type: Boolean, default: false }
 });
 
 defineEmits(['update:usernameInput', 'update:displayNameInput', 'update:roomCodeInput', 'changeUsername', 'joinRoom', 'manageAccount']);
 </script>
 
 <style scoped>
+.display-name-locked {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
 .join-section {
   display: flex;
   flex-direction: column;

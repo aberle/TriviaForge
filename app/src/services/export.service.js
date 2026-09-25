@@ -47,8 +47,20 @@ export function generateCSV(sessionData) {
   lines.push('');
 
   // Question Breakdown section
+  // Sessions played in rounds get a Round column; others keep the original layout
+  const rounds = sessionData.rounds || [];
+  const hasRounds = rounds.length > 0;
+  const roundLabel = (question) => {
+    const round = rounds.find((r) => r.order === question.roundOrder);
+    return round ? `${round.order}. ${round.title}` : '';
+  };
+
   lines.push('QUESTION BREAKDOWN');
-  lines.push('#,Question,Correct Answer,Correct Count,Incorrect Count,Unanswered');
+  lines.push(
+    hasRounds
+      ? '#,Round,Question,Correct Answer,Correct Count,Incorrect Count,Unanswered'
+      : '#,Question,Correct Answer,Correct Count,Incorrect Count,Unanswered'
+  );
 
   sessionData.questions.forEach((question, qIdx) => {
     const isShortAnswer = question.type === 'short_answer';
@@ -71,8 +83,9 @@ export function generateCSV(sessionData) {
       ? (question.acceptedAnswers || []).map(a => a.answer_text).join(' / ')
       : `${String.fromCharCode(65 + question.correctChoice)}. ${question.choices[question.correctChoice] || ''}`;
 
+    const roundCell = hasRounds ? `${escapeCSV(roundLabel(question))},` : '';
     lines.push(
-      `${qIdx + 1},${escapeCSV(question.text)},${escapeCSV(correctAnswerLabel)},${correctCount},${incorrectCount},${unansweredCount}`
+      `${qIdx + 1},${roundCell}${escapeCSV(question.text)},${escapeCSV(correctAnswerLabel)},${correctCount},${incorrectCount},${unansweredCount}`
     );
   });
 

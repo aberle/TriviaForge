@@ -66,6 +66,7 @@
               <span v-if="quiz.availableLive !== false" class="badge badge-live" title="Available for Live Games">Live</span>
               <span v-if="quiz.availableSolo !== false" class="badge badge-solo" title="Available for Solo Play">Solo</span>
               <span v-if="quiz.showResults !== false" class="badge badge-results" title="Show Results After Quiz">Results</span>
+              <span v-if="quiz.roundCount > 0" class="badge badge-info badge-rounds" title="This quiz is split into rounds">{{ quiz.roundCount }} {{ quiz.roundCount === 1 ? 'round' : 'rounds' }}</span>
             </span>
           </div>
         </div>
@@ -174,6 +175,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.badge-rounds {
+  white-space: nowrap;
+}
+
 .quiz-sidebar {
   display: flex;
   flex-direction: column;
@@ -400,6 +405,7 @@ h2 {
 
 .quiz-badges {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
 }
 

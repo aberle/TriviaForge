@@ -16,11 +16,48 @@ import {
   BadRequestError,
 } from '../utils/errors.js';
 import { sendSuccess } from '../utils/responses.js';
+import { validateRounds } from '../utils/validators.js';
 
 // Ensure uploads directory exists on startup
 const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'questions');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+/**
+ * Helper: Validate rounds against the question list, throwing a 400 on failure.
+ *
+ * @param {Array} rounds - Round definitions from the request body
+ * @param {Array} questions - Ordered questions from the request body
+ */
+function assertValidRounds(rounds, questions) {
+  const result = validateRounds(rounds, questions);
+  if (!result.valid) {
+    throw new BadRequestError(result.error);
+  }
+}
+
+/**
+ * Helper: Insert a quiz's rounds and return their database IDs, indexed by roundIndex.
+ * Callers must have already removed the quiz's previous rounds. No rounds (undefined
+ * or empty) means a round-less quiz.
+ *
+ * @param {Object} client - Transaction client
+ * @param {number} quizId - Quiz ID
+ * @param {Array<{title?: string, timeLimitSeconds?: number|null}>} rounds - Round definitions
+ * @returns {Promise<number[]>} Round IDs, aligned with the rounds array
+ */
+async function insertQuizRounds(client, quizId, rounds) {
+  const roundIds = [];
+  for (let i = 0; i < (rounds || []).length; i++) {
+    const round = rounds[i];
+    const result = await client.query(
+      'INSERT INTO quiz_rounds (quiz_id, round_order, title, time_limit_seconds) VALUES ($1, $2, $3, $4) RETURNING id',
+      [quizId, i + 1, (round.title || '').trim(), round.timeLimitSeconds || null]
+    );
+    roundIds.push(result.rows[0].id);
+  }
+  return roundIds;
 }
 
 /**
@@ -54,6 +91,7 @@ async function getQuizById(quizId) {
         qs.image_url,
         qs.image_type,
         qq.question_order,
+        qq.round_id,
         a.id AS answer_id,
         a.answer_text,
         a.is_correct,
@@ -78,6 +116,7 @@ async function getQuizById(quizId) {
           imageUrl: row.image_url,
           imageType: row.image_type,
           order: row.question_order,
+          roundId: row.round_id,
           choices: [],
         });
       }
@@ -94,6 +133,20 @@ async function getQuizById(quizId) {
       (a, b) => a.order - b.order
     );
 
+    // Rounds (v5.16.0): each question gets the zero-based index of its round
+    const roundsResult = await client.query(
+      'SELECT id, title, time_limit_seconds FROM quiz_rounds WHERE quiz_id = $1 ORDER BY round_order',
+      [quizId]
+    );
+    const rounds = roundsResult.rows.map((r) => ({
+      title: r.title,
+      timeLimitSeconds: r.time_limit_seconds,
+    }));
+    const roundIndexById = new Map(roundsResult.rows.map((r, i) => [r.id, i]));
+    for (const q of questions) {
+      q.roundIndex = roundIndexById.has(q.roundId) ? roundIndexById.get(q.roundId) : null;
+    }
+
     return {
       id: quiz.id,
       title: quiz.title,
@@ -101,6 +154,7 @@ async function getQuizById(quizId) {
       answerDisplayTimeout: quiz.answer_display_timeout,
       showResults: quiz.show_results !== false,
       createdAt: quiz.created_at,
+      rounds,
       questions,
     };
   } finally {
@@ -125,7 +179,8 @@ async function listQuizzesFromDB() {
       q.available_live,
       q.available_solo,
       q.show_results,
-      COUNT(qq.question_id) as question_count
+      COUNT(qq.question_id) as question_count,
+      (SELECT COUNT(*) FROM quiz_rounds qr WHERE qr.quiz_id = q.id) as round_count
     FROM quizzes q
     LEFT JOIN quiz_questions qq ON q.id = qq.quiz_id
     WHERE q.is_active = TRUE
@@ -159,6 +214,7 @@ export async function listQuizzes(req, res, next) {
       availableLive: q.available_live !== false, // Default true
       availableSolo: q.available_solo !== false, // Default true
       showResults: q.show_results !== false, // Default true
+      roundCount: parseInt(q.round_count) || 0, // v5.16.0
     }));
 
     res.json(formatted);
@@ -197,6 +253,7 @@ export async function getQuiz(req, res, next) {
       filename: `quiz_${quiz.id}.json`,
       title: quiz.title,
       description: quiz.description,
+      rounds: quiz.rounds,
       questions: quiz.questions.map((q) => ({
         id: q.id,
         text: q.text,
@@ -205,6 +262,7 @@ export async function getQuiz(req, res, next) {
         imageType: q.imageType || null,
         choices: q.choices.map((c) => c.text),
         correctChoice: q.choices.findIndex((c) => c.isCorrect),
+        roundIndex: q.roundIndex,
       })),
     };
 
@@ -221,10 +279,12 @@ export async function getQuiz(req, res, next) {
  * Body: { title, description, questions }
  */
 export async function createQuiz(req, res, next) {
-  const { title, description, questions, questionTimer, revealDelay, availableLive, availableSolo, showResults } = req.body;
+  const { title, description, questions, rounds, questionTimer, revealDelay, availableLive, availableSolo, showResults } = req.body;
   const client = await getClient();
 
   try {
+    assertValidRounds(rounds, questions);
+
     await client.query('BEGIN');
 
     // Insert quiz (use authenticated user's ID) - v5.4.0: includes timer and availability settings
@@ -235,6 +295,8 @@ export async function createQuiz(req, res, next) {
       [title, description, userId, questionTimer || null, revealDelay || null, availableLive, availableSolo, showResults]
     );
     const quizId = quizResult.rows[0].id;
+
+    const roundIds = await insertQuizRounds(client, quizId, rounds);
 
     // Insert each question with answers
     for (let i = 0; i < (questions || []).length; i++) {
@@ -252,8 +314,8 @@ export async function createQuiz(req, res, next) {
 
       // Link question to quiz
       await client.query(
-        'INSERT INTO quiz_questions (quiz_id, question_id, question_order) VALUES ($1, $2, $3)',
-        [quizId, questionId, i + 1]
+        'INSERT INTO quiz_questions (quiz_id, question_id, question_order, round_id) VALUES ($1, $2, $3, $4)',
+        [quizId, questionId, i + 1, roundIds[q.roundIndex] ?? null]
       );
 
       // Insert answers — for short_answer questions every entry is an accepted answer, so all are "correct"
@@ -275,6 +337,7 @@ export async function createQuiz(req, res, next) {
       id: quizId,
       title,
       description,
+      rounds: rounds || [],
       questions: questions || [],
     });
   } catch (err) {
@@ -305,11 +368,16 @@ export async function updateQuiz(req, res, next) {
       throw new BadRequestError('Invalid quiz ID format');
     }
 
-    const { title, description, questions, questionTimer, revealDelay, availableLive, availableSolo, showResults } = req.body;
+    const { title, description, questions, rounds, questionTimer, revealDelay, availableLive, availableSolo, showResults } = req.body;
 
     // If questions is provided, it must be an array
     if (questions !== undefined && !Array.isArray(questions)) {
       throw new BadRequestError('Questions must be an array');
+    }
+
+    // A full update replaces the quiz's rounds too: omitting `rounds` means no rounds
+    if (questions !== undefined) {
+      assertValidRounds(rounds, questions);
     }
 
     await client.query('BEGIN');
@@ -394,8 +462,9 @@ export async function updateQuiz(req, res, next) {
     );
     const oldQuestionIds = oldQuestionsResult.rows.map((row) => row.question_id);
 
-    // Delete quiz-question relationships first
+    // Delete quiz-question relationships first, then the old rounds (re-created below)
     await client.query('DELETE FROM quiz_questions WHERE quiz_id = $1', [quizId]);
+    await client.query('DELETE FROM quiz_rounds WHERE quiz_id = $1', [quizId]);
 
     // Try to delete old questions that are NOT referenced by session_questions
     // (Questions used in sessions will be preserved for historical data)
@@ -411,6 +480,8 @@ export async function updateQuiz(req, res, next) {
         [oldQuestionIds]
       );
     }
+
+    const roundIds = await insertQuizRounds(client, quizId, rounds);
 
     // Insert new questions with answers (use authenticated user's ID)
     const userId = req.user?.user_id || 1; // Fallback for backward compatibility
@@ -429,8 +500,8 @@ export async function updateQuiz(req, res, next) {
 
       // Link question to quiz
       await client.query(
-        'INSERT INTO quiz_questions (quiz_id, question_id, question_order) VALUES ($1, $2, $3)',
-        [quizId, questionId, i + 1]
+        'INSERT INTO quiz_questions (quiz_id, question_id, question_order, round_id) VALUES ($1, $2, $3, $4)',
+        [quizId, questionId, i + 1, roundIds[q.roundIndex] ?? null]
       );
 
       // Insert answers — for short_answer questions every entry is an accepted answer, so all are "correct"
@@ -451,6 +522,7 @@ export async function updateQuiz(req, res, next) {
       id: quizId,
       title,
       description,
+      rounds: rounds || [],
       questions,
     });
   } catch (err) {

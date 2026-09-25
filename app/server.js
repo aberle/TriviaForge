@@ -40,6 +40,8 @@ import { autoModeService } from './src/services/autoMode.service.js';
 import { initializeAdminPassword } from './src/services/startup.service.js';
 import { isDisplayNameBanned } from './src/services/player.service.js';
 import { matchShortAnswer } from './src/utils/similarity.js';
+import { gradeAnswer } from './src/utils/grading.js';
+import { roundService } from './src/services/round.service.js';
 
 // --------------------
 // Helper: Auto-detect local IP
@@ -261,6 +263,41 @@ const saveSession = async (roomCode, room) => {
 };
 
 // --------------------
+// Helper: anonymous identity for guest-only mode (GUEST_ONLY_MODE)
+// --------------------
+// With guest-only mode on, a player's account name is ignored. Each device gets a stable
+// anonymous username from its PlayerID, so a refresh or reconnect rejoins as the same player.
+// The client derives the same value (see PlayerPage.vue), so keep the two in sync.
+const guestUsernameFor = (playerID, socketId) =>
+  `guest_${String(playerID || socketId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`;
+
+// --------------------
+// Helper: display names must be unique within a room
+// --------------------
+// A join is refused when someone else is already in the room under the same display name
+// (ignoring case and surrounding spaces). "Someone else" means a different device AND a different
+// username, so a player refreshing or reconnecting under their own name is never blocked.
+const normalizeDisplayName = (name) => String(name || '').trim().toLowerCase();
+
+const displayNameTakenByAnother = (room, displayName, playerUsername, playerID) => {
+  const wanted = normalizeDisplayName(displayName);
+  return Object.values(room.players).some((p) => {
+    if (p.isSpectator || normalizeDisplayName(p.name) !== wanted) return false;
+    const samePerson = (playerID && p.playerID === playerID) || p.username === playerUsername;
+    return !samePerson;
+  });
+};
+
+// The player entry this device/account already has in a room, if any. Entries stay after a player
+// leaves, so this is how "have I been in this room before, and under what name?" is answered.
+const findExistingPlayer = (room, playerID, username) => {
+  const players = Object.values(room.players).filter((p) => !p.isSpectator);
+  return (playerID && players.find((p) => p.playerID === playerID)) || players.find((p) => p.username === username) || null;
+};
+
+const DISPLAY_NAME_TAKEN_MESSAGE = 'That display name is already taken in this room. Please choose a different name.';
+
+// --------------------
 // Helper: check if session has answers
 // --------------------
 const sessionHasAnswers = (room) => {
@@ -272,18 +309,20 @@ const sessionHasAnswers = (room) => {
 // --------------------
 // Helper: broadcast quiz results to players/displays (v5.6.0)
 // --------------------
-const broadcastQuizResults = (roomCode, room) => {
-  if (!room.showResults) return;
+const buildQuizResults = (room) => {
+  if (!room.showResults) return null;
 
   const totalQuestions = room.quizData.questions.length;
   const players = Object.values(room.players)
     .filter(p => !p.isSpectator && p.answers && Object.keys(p.answers).length > 0)
     .map(p => {
       const answers = p.answers || {};
+      const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
       let correct = 0;
       for (const [qIdx, choice] of Object.entries(answers)) {
         const question = room.quizData.questions[parseInt(qIdx)];
-        if (question && choice === question.correctChoice) {
+        // gradeAnswer also handles short-answer questions, which never equal correctChoice (-1)
+        if (question && gradeAnswer(question, choice, threshold)) {
           correct++;
         }
       }
@@ -295,16 +334,16 @@ const broadcastQuizResults = (roomCode, room) => {
     })
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 
-  // Compute class average
-  const totalCorrect = players.reduce((sum, p) => sum + p.score, 0);
-  const classAverage = players.length > 0 ? (totalCorrect / players.length).toFixed(1) : 0;
-
-  io.to(roomCode).emit('quizResults', {
+  return {
     players,
     totalQuestions,
-    classAverage: parseFloat(classAverage),
     showResults: true
-  });
+  };
+};
+
+const broadcastQuizResults = (roomCode, room) => {
+  const results = buildQuizResults(room);
+  if (results) io.to(roomCode).emit('quizResults', results);
 };
 
 // --------------------
@@ -316,6 +355,11 @@ const broadcastQuizResults = (roomCode, room) => {
 // --------------------
 // Routes: Simple Authentication
 // --------------------
+
+// Public, non-sensitive server settings the UI needs before anyone logs in
+app.get('/api/config', (req, res) => {
+  res.json({ guestOnly: env.guestOnly });
+});
 
 // CSRF token endpoint - GET is excluded from CSRF protection
 app.get('/api/csrf-token', (req, res) => {
@@ -1399,6 +1443,7 @@ const cleanupExpiredRooms = async () => {
 
       // Stop auto-mode if running
       autoModeService.cleanup(roomCode);
+      roundService.cleanup(roomCode);
 
       // Notify any remaining connected clients
       io.to(roomCode).emit('roomClosed', {
@@ -1576,28 +1621,8 @@ io.on('connection', (socket) => {
         return socket.emit('roomError', 'Quiz not found');
       }
 
-      // Convert database format to legacy format for compatibility
-      const quizData = {
-        filename: quizFilename,
-        title: quiz.title,
-        description: quiz.description,
-        questions: quiz.questions.map(q => {
-          const type = q.type || 'multiple_choice';
-          const base = {
-            id: q.id,
-            text: q.text,
-            type,
-            imageUrl: q.imageUrl || null,
-            imageType: q.imageType || null,
-            choices: q.choices.map(c => c.text),
-            correctChoice: type === 'short_answer' ? -1 : q.choices.findIndex(c => c.isCorrect)
-          };
-          if (type === 'short_answer') {
-            base.acceptedAnswers = q.choices.map((c, idx) => ({ id: c.id ?? idx, answer_text: c.text }));
-          }
-          return base;
-        })
-      };
+      // Convert database format to legacy format for compatibility (includes rounds)
+      const quizData = quizService.formatQuizForRoom(quiz, quizFilename);
 
       // Check if room already exists (presenter reconnecting)
       if (roomService.liveRooms[roomCode]) {
@@ -1627,6 +1652,10 @@ io.on('connection', (socket) => {
           // v5.6.0: Show results setting
           showResults: quiz.showResults !== false,
         };
+        // v5.16.0: rooms for quizzes with rounds track round state
+        if (roundService.isRoundMode(roomService.liveRooms[roomCode])) {
+          roomService.liveRooms[roomCode].rounds = roundService.createState();
+        }
         console.log(`Room ${roomCode} created for quiz ID ${quizId} (${quiz.title}) by admin ${userId || 1}`);
       }
 
@@ -1647,6 +1676,8 @@ io.on('connection', (socket) => {
         quizFilename: roomService.liveRooms[roomCode].quizFilename,
         quizTitle: quizData.title,
         questions: quizData.questions,
+        rounds: roomService.liveRooms[roomCode].quizData.rounds || [],
+        quizCompleted: roomService.liveRooms[roomCode].status === 'completed',
         currentQuestionIndex: roomService.liveRooms[roomCode].currentQuestionIndex,
         presentedQuestions: roomService.liveRooms[roomCode].presentedQuestions,
         revealedQuestions: roomService.liveRooms[roomCode].revealedQuestions,
@@ -1657,6 +1688,9 @@ io.on('connection', (socket) => {
         revealDelay: roomService.liveRooms[roomCode].revealDelay,
         autoModeState: autoModeService.getState(roomCode)
       });
+
+      // v5.16.0: round state (open round, progress, last leaderboard) for a presenter (re)connecting
+      roundService.sendSnapshot(socket, roomCode, { isPresenter: true });
 
       // Send current player list to presenter (especially important on reconnection)
       io.to(roomCode).emit('playerListUpdate', {
@@ -1744,28 +1778,8 @@ io.on('connection', (socket) => {
         console.log(`[RESUME] ✅ Quiz loaded: ${quiz.title} with ${quiz.questions.length} questions`);
       }
 
-      // Convert database format to legacy format for compatibility
-      const quizData = {
-        filename: `quiz_${session.quiz_id}.json`,
-        title: quiz.title,
-        description: quiz.description,
-        questions: quiz.questions.map(q => {
-          const type = q.type || 'multiple_choice';
-          const base = {
-            id: q.id,
-            text: q.text,
-            type,
-            imageUrl: q.imageUrl || null,
-            imageType: q.imageType || null,
-            choices: q.choices.map(c => c.text),
-            correctChoice: type === 'short_answer' ? -1 : q.choices.findIndex(c => c.isCorrect)
-          };
-          if (type === 'short_answer') {
-            base.acceptedAnswers = q.choices.map((c, idx) => ({ id: c.id ?? idx, answer_text: c.text }));
-          }
-          return base;
-        })
-      };
+      // Convert database format to legacy format for compatibility (includes rounds)
+      const quizData = quizService.formatQuizForRoom(quiz, `quiz_${session.quiz_id}.json`);
 
       // Load participants and their answers from database
       const participantsResult = await pool.query(`
@@ -1775,7 +1789,8 @@ io.on('connection', (socket) => {
           u.username,
           pa.question_id,
           sq.presentation_order,
-          a.display_order as choice_index
+          a.display_order as choice_index,
+          pa.answer_text
         FROM game_participants gp
         JOIN users u ON gp.user_id = u.id
         LEFT JOIN participant_answers pa ON gp.id = pa.participant_id
@@ -1805,7 +1820,10 @@ io.on('connection', (socket) => {
             isSpectator // Mark spectators properly when loading from database
           });
         }
-        if (row.presentation_order !== null && row.choice_index !== null) {
+        if (row.presentation_order !== null && row.answer_text !== null) {
+          // Short-answer submissions are stored as the typed text (there is no choice row)
+          playersMap.get(row.username).answers[row.presentation_order] = row.answer_text;
+        } else if (row.presentation_order !== null && row.choice_index !== null) {
           playersMap.get(row.username).answers[row.presentation_order] = row.choice_index;
         }
       }
@@ -1858,6 +1876,14 @@ io.on('connection', (socket) => {
         originalSessionId: sessionId
       };
 
+      // v5.16.0: rounds resume between rounds. Completed rounds come from the revealed
+      // questions; a round that was open when the session stopped is played again.
+      if (roundService.isRoundMode(roomService.liveRooms[roomCode])) {
+        const resumedRoom = roomService.liveRooms[roomCode];
+        resumedRoom.currentQuestionIndex = null;
+        resumedRoom.rounds = roundService.restoreState(resumedRoom);
+      }
+
       if (env.isVerboseLogging) {
         console.log(`Room ${roomCode} resumed from session ID ${sessionId} (original room: ${session.original_room_code})`);
       }
@@ -1870,6 +1896,7 @@ io.on('connection', (socket) => {
         quizFilename: roomService.liveRooms[roomCode].quizFilename,
         quizTitle: quizData.title,
         questions: quizData.questions,
+        rounds: quizData.rounds || [],
         currentQuestionIndex: roomService.liveRooms[roomCode].currentQuestionIndex,
         presentedQuestions: roomService.liveRooms[roomCode].presentedQuestions,
         revealedQuestions: roomService.liveRooms[roomCode].revealedQuestions,
@@ -1881,6 +1908,7 @@ io.on('connection', (socket) => {
         revealDelay: roomService.liveRooms[roomCode].revealDelay,
         autoModeState: autoModeService.getState(roomCode)
       });
+      roundService.sendSnapshot(socket, roomCode, { isPresenter: true });
 
       // Send the player list to the presenter (shows disconnected players from previous session, excluding spectators)
       io.to(roomCode).emit('playerListUpdate', {
@@ -1934,6 +1962,8 @@ io.on('connection', (socket) => {
       roomCode,
       quizTitle: room.quizData.title,
       questions: room.quizData.questions,
+      rounds: room.quizData.rounds || [],
+      quizCompleted: room.status === 'completed',
       currentQuestionIndex: room.currentQuestionIndex,
       players: Object.values(room.players).filter(p => !p.isSpectator), // Filter out spectators
       presentedQuestions: room.presentedQuestions || [],
@@ -1944,6 +1974,7 @@ io.on('connection', (socket) => {
       revealDelay: room.revealDelay,
       autoModeState: autoModeService.getState(roomCode)
     });
+    roundService.sendSnapshot(socket, roomCode, { isPresenter: true });
 
     // If there's a current question active, send it to the viewer
     if (room.currentQuestionIndex !== null) {
@@ -2010,9 +2041,18 @@ io.on('connection', (socket) => {
 
     room.lastActivityAt = Date.now(); // v5.5.0: Update activity for expiry tracking
 
-    // Support legacy playerName parameter for backward compatibility
-    const playerUsername = username;
-    const playerDisplayName = displayName;
+    // Support legacy playerName parameter for backward compatibility.
+    // Guest-only mode (GUEST_ONLY_MODE) ignores whatever account name the client sent (so a
+    // registered player joins as a guest too) and uses a stable anonymous identity from their PlayerID.
+    const requestedSpectator = spectatorFlag === true || username === 'Display' || displayName === 'Spectator Display';
+    const playerUsername = env.guestOnly && !requestedSpectator ? guestUsernameFor(playerID, socket.id) : username;
+
+    // Someone who has been in this room before keeps the display name they had (leaving and
+    // rejoining can't be used to change it). Once the quiz is completed it no longer matters.
+    const existingSelf = !requestedSpectator && room.status !== 'completed'
+      ? findExistingPlayer(room, playerID, playerUsername)
+      : null;
+    const playerDisplayName = existingSelf ? existingSelf.name : displayName;
 
     // Track user agent for mobile-specific handling and diagnostics
     const userAgent = socket.handshake.headers['user-agent'] || '';
@@ -2071,6 +2111,13 @@ io.on('connection', (socket) => {
       }
     }
 
+    // Two people can't share a display name in a room (checked again below, right before the player
+    // is added, because the database calls in between let a simultaneous join slip through)
+    if (!isSpectator && displayNameTakenByAnother(room, playerDisplayName, playerUsername, playerID)) {
+      socket.emit('roomError', DISPLAY_NAME_TAKEN_MESSAGE);
+      return;
+    }
+
     // Create or retrieve guest user account (using username)
     // Skip user creation entirely for spectators/displays — they don't need DB records
     let userId = null;
@@ -2102,6 +2149,12 @@ io.on('connection', (socket) => {
         socket.emit('roomError', 'Failed to create user account. Please try again.');
         return;
       }
+    }
+
+    // Final uniqueness check: nothing async happens between here and adding the player below
+    if (!isSpectator && displayNameTakenByAnother(room, playerDisplayName, playerUsername, playerID)) {
+      socket.emit('roomError', DISPLAY_NAME_TAKEN_MESSAGE);
+      return;
     }
 
     // PHASE 2: Check if PlayerID exists in room (reconnection scenario)
@@ -2297,6 +2350,7 @@ io.on('connection', (socket) => {
       totalQuestions: room.quizData.questions.length
     });
     io.emit('activeRoomsUpdate', getActiveRoomsSummary());
+    roundService.emitProgress(roomCode, room); // a (re)joining player changes who counts toward "submitted"
 
     // Send the player's answer history with detailed information (skip for spectators)
     if (!room.players[socket.id].isSpectator) {
@@ -2343,6 +2397,31 @@ io.on('connection', (socket) => {
       socket.emit('answerHistoryRestored', { answerHistory });
     }
 
+    // The quiz's name, for the player's top bar
+    // (and, for a player, the display name they are known by, which may differ from what they typed)
+    const joinedAs = room.players[socket.id];
+    socket.emit('roomInfo', {
+      roomCode,
+      quizTitle: room.quizData.title || '',
+      displayName: joinedAs && !joinedAs.isSpectator ? joinedAs.name : undefined
+    });
+
+    // v5.16.0: current round, the player's own draft, and the last leaderboard (players and displays)
+    roundService.sendSnapshot(socket, roomCode);
+
+    // A quiz that is already completed: send the completed state and final results again, so a
+    // refresh or rejoin lands on the final results instead of the last question or round
+    if (room.status === 'completed') {
+      socket.emit('quizCompleted', {
+        message: 'Quiz completed',
+        filename: null,
+        showResults: room.showResults || false,
+        restored: true // a rejoin: no "results in 5..." countdown
+      });
+      const results = buildQuizResults(room);
+      if (results) socket.emit('quizResults', results);
+    }
+
     // If there's a current question active, send it to the new player
     if (room.currentQuestionIndex !== null) {
       const question = room.quizData.questions[room.currentQuestionIndex];
@@ -2361,6 +2440,21 @@ io.on('connection', (socket) => {
   });
 
   // Player connection state change
+  // "Have I already joined this room, and as whom?" Lets the join form fill in (and lock) the
+  // player's existing display name, and lets a QR link rejoin without asking. Answers only about
+  // the caller's own device/account.
+  socket.on('lookupRoomIdentity', ({ roomCode, username } = {}) => {
+    const code = String(roomCode || '').trim();
+    const room = roomService.liveRooms[code];
+    let displayName = null;
+    if (room && room.status !== 'completed') {
+      const playerID = socket.handshake.auth?.playerID;
+      const lookupUsername = env.guestOnly ? guestUsernameFor(playerID, socket.id) : username;
+      displayName = findExistingPlayer(room, playerID, lookupUsername)?.name ?? null;
+    }
+    socket.emit('roomIdentity', { roomCode: code, displayName });
+  });
+
   socket.on('playerStateChange', ({ roomCode, username, state }) => {
     const room = roomService.liveRooms[roomCode];
     if (!room || !room.players[socket.id]) return;
@@ -2378,12 +2472,19 @@ io.on('connection', (socket) => {
 
     // Broadcast updated player list to all clients in the room
     io.to(roomCode).emit('playerListUpdate', { roomCode, players: Object.values(room.players).filter(p => !p.isSpectator), revealedCount: (room.revealedQuestions || []).length, totalQuestions: room.quizData.questions.length });
+    roundService.emitProgress(roomCode, room);
   });
 
   // Presenter presents a question
   socket.on('presentQuestion', ({ roomCode, questionIndex }) => {
     const room = roomService.liveRooms[roomCode];
     if (!room) return;
+
+    // v5.16.0: quizzes with rounds are played a round at a time
+    if (roundService.isRoundMode(room)) {
+      socket.emit('roomError', 'This quiz is played in rounds. Start a round instead.');
+      return;
+    }
 
     room.currentQuestionIndex = questionIndex;
     room.lastActivityAt = Date.now(); // v5.5.0: Update activity for expiry tracking
@@ -2554,6 +2655,7 @@ io.on('connection', (socket) => {
   socket.on('revealAnswer', ({ roomCode }) => {
     const room = roomService.liveRooms[roomCode];
     if (!room || room.currentQuestionIndex === null) return;
+    if (roundService.isRoundMode(room)) return; // answers are revealed when a round ends
 
     // Guard: skip if this question was already revealed (prevents double-reveal)
     if (room.revealedQuestions.includes(room.currentQuestionIndex)) {
@@ -2629,10 +2731,103 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ---- Round Controls (v5.16.0) ----
+  // Quizzes with rounds: players answer a whole round at their own pace and submit it; the
+  // round ends when its timer runs out or the presenter ends it. Logic lives in round.service.js.
+
+  // Presenter starts a round
+  socket.on('startRound', ({ roomCode, roundIndex }) => {
+    const room = roomService.liveRooms[roomCode];
+    if (!room) return;
+
+    if (room.presenterId !== socket.id) {
+      socket.emit('roomError', 'Only the presenter can control rounds');
+      return;
+    }
+
+    const result = roundService.startRound(roomCode, room, roundIndex);
+    if (!result.ok) {
+      socket.emit('roomError', result.message);
+      return;
+    }
+
+    // Periodically save progress from the first round on (idempotent)
+    startAutoSave(roomCode);
+  });
+
+  // Presenter ends the open round (timed rounds also end themselves)
+  socket.on('endRound', ({ roomCode, roundIndex }) => {
+    const room = roomService.liveRooms[roomCode];
+    if (!room || !roundService.isRoundMode(room)) return;
+
+    if (room.presenterId !== socket.id) {
+      socket.emit('roomError', 'Only the presenter can control rounds');
+      return;
+    }
+
+    // Ignore a stale request for a round that is not the one running
+    if (roundIndex !== undefined && roundIndex !== room.rounds.current) return;
+
+    roundService.finalizeRound(roomCode, 'presenter');
+  });
+
+  // Player saves in-progress answers (no reply). Cheap in-memory write, but capped per socket.
+  socket.on('saveRoundDraft', ({ roomCode, roundIndex, answers }) => {
+    const room = roomService.liveRooms[roomCode];
+    if (!room || !roundService.isRoundMode(room)) return;
+
+    const now = Date.now();
+    const window = socket.data.draftWindow;
+    if (!window || now - window.start > 10000) {
+      socket.data.draftWindow = { start: now, count: 1 };
+    } else if (++window.count > 60) {
+      return;
+    }
+
+    roundService.saveDraft(room, room.players[socket.id], roundIndex, answers);
+  });
+
+  // Player submits the open round (they can submit again to change their answers until it ends)
+  socket.on('submitRound', ({ roomCode, roundIndex, answers }) => {
+    const clientIP = socket.handshake.headers['x-forwarded-for']?.split(',')[0]?.trim() || socket.handshake.address || 'unknown';
+    if (!checkSocketRateLimit(clientIP, 'answer')) {
+      socket.emit('roundSubmitted', { roundIndex, success: false, message: 'Too many submissions. Please slow down.' });
+      return;
+    }
+
+    const room = roomService.liveRooms[roomCode];
+    if (!room) return;
+
+    const result = roundService.submitRound(room, room.players[socket.id], roundIndex, answers);
+    if (result.ok) {
+      socket.emit('roundSubmitted', { roundIndex, success: true });
+      roundService.emitProgress(roomCode, room);
+    } else {
+      socket.emit('roundSubmitted', {
+        roundIndex,
+        success: false,
+        message: result.message,
+        ended: !!result.ended
+      });
+    }
+  });
+
   // Presenter completes quiz
   socket.on('completeQuiz', async ({ roomCode }) => {
     const room = roomService.liveRooms[roomCode];
     if (!room) return;
+
+    // v5.16.0: in a quiz with rounds only the presenter can complete it, and not mid-round
+    if (roundService.isRoundMode(room)) {
+      if (room.presenterId !== socket.id) {
+        socket.emit('roomError', 'Only the presenter can complete the quiz');
+        return;
+      }
+      if (room.rounds.phase === 'open') {
+        socket.emit('roomError', 'End the current round before completing the quiz');
+        return;
+      }
+    }
 
     room.status = 'completed';
     room.completedAt = new Date().toISOString();
@@ -2683,6 +2878,12 @@ io.on('connection', (socket) => {
     // Validate presenter
     if (room.presenterId !== socket.id) {
       socket.emit('roomError', 'Only the presenter can control auto-mode');
+      return;
+    }
+
+    // v5.16.0: auto-pilot presents one question at a time, which doesn't fit rounds
+    if (roundService.isRoundMode(room)) {
+      socket.emit('roomError', 'Auto-pilot is not available for quizzes with rounds');
       return;
     }
 
@@ -2751,6 +2952,8 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (roundService.isRoundMode(room)) return;
+
     autoModeService.resumeAutoMode(roomCode);
     const state = autoModeService.getState(roomCode);
 
@@ -2790,6 +2993,7 @@ io.on('connection', (socket) => {
 
     // Clean up auto-mode timers
     autoModeService.cleanup(roomCode);
+    roundService.cleanup(roomCode);
 
     // Auto-save if there are answers
     if (sessionHasAnswers(room)) {
@@ -2851,7 +3055,9 @@ io.on('connection', (socket) => {
     });
 
     // Remove player from room
+    const kickedUsername = room.players[playerSocketId].username;
     delete room.players[playerSocketId];
+    roundService.removePlayer(roomCode, room, kickedUsername);
 
     // Update player list for everyone
     io.to(roomCode).emit('playerListUpdate', { roomCode, players: Object.values(room.players).filter(p => !p.isSpectator), revealedCount: (room.revealedQuestions || []).length, totalQuestions: room.quizData.questions.length });
@@ -2876,6 +3082,7 @@ io.on('connection', (socket) => {
         room.players[socket.id].connectionState = 'disconnected';
         io.to(roomCode).emit('playerListUpdate', { roomCode, players: Object.values(room.players).filter(p => !p.isSpectator), revealedCount: (room.revealedQuestions || []).length, totalQuestions: room.quizData.questions.length });
         io.emit('activeRoomsUpdate', getActiveRoomsSummary());
+        roundService.emitProgress(roomCode, room);
         console.log(`${playerName} disconnected from room ${roomCode}`);
       }
 
@@ -3907,6 +4114,7 @@ app.use((req, res, next) => {
 
   // Initialize auto-mode service
   autoModeService.initialize(io, roomService, pool, quizOptions);
+  roundService.initialize(io, roomService, quizOptions, saveSession);
 
   server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 })();

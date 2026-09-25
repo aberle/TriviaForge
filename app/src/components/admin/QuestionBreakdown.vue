@@ -1,7 +1,11 @@
 <template>
   <div class="question-breakdown">
     <h4>Question Breakdown</h4>
-    <div v-for="(question, qIdx) in questions" :key="qIdx" class="question-detail">
+    <template v-for="(question, qIdx) in questions" :key="qIdx">
+    <div v-if="roundHeading(qIdx)" class="round-heading">
+      <AppIcon name="layers" size="sm" /> {{ roundHeading(qIdx) }}
+    </div>
+    <div class="question-detail">
       <div class="question-header">
         <strong>Q{{ qIdx + 1 }}:</strong> {{ question.text }}
       </div>
@@ -67,20 +71,31 @@
         <em>Question not presented</em>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup>
 import AppIcon from '@/components/common/AppIcon.vue';
 
-defineProps({
+const props = defineProps({
   questions: { type: Array, required: true },
+  // Rounds the session was played in: [{ order, title }]; empty for a session without rounds
+  rounds: { type: Array, default: () => [] },
   playerResults: { type: Array, required: true },
   presentedQuestions: { type: Array, default: () => [] },
   expandedQuestions: { type: Set, required: true }
 });
 
 defineEmits(['toggleQuestion']);
+
+// A heading above the first question of each round (questions are stored in play order)
+function roundHeading(qIdx) {
+  const order = props.questions[qIdx].roundOrder;
+  if (!order || (qIdx > 0 && props.questions[qIdx - 1].roundOrder === order)) return '';
+  const round = props.rounds.find((r) => r.order === order);
+  return round ? `Round ${round.order}: ${round.title}` : '';
+}
 
 function isPlayerCorrect(question, player, answer) {
   if (answer === undefined || answer === '') return false;
@@ -92,6 +107,19 @@ function isPlayerCorrect(question, player, answer) {
 </script>
 
 <style scoped>
+.round-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.25rem 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--info-bg-20);
+  border-left: 4px solid var(--info-light);
+  border-radius: 4px;
+  color: var(--info-light);
+  font-weight: bold;
+}
+
 .question-breakdown {
   margin-top: 2rem;
 }

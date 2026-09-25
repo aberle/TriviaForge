@@ -24,6 +24,7 @@
       <QuestionBreakdown
         v-if="session.questions && session.questions.length > 0"
         :questions="session.questions"
+        :rounds="session.rounds || []"
         :playerResults="session.playerResults || []"
         :presentedQuestions="session.presentedQuestions"
         :expandedQuestions="expandedQuestions"

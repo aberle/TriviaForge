@@ -872,6 +872,22 @@ button:disabled {
 .font-normal { font-weight: 400; }
 
 .text-muted { color: var(--text-secondary); }
+
+/* Text that must not be highlighted: stops players selecting a question to look it up or search it
+   (long-press "Look Up" / "Search" on phones). Inputs stay selectable and editable, otherwise typing
+   an answer breaks on iOS. */
+.no-select,
+.no-select * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.no-select input,
+.no-select textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
 .text-error { color: var(--danger-color); }
 .text-success { color: var(--secondary-color); }
 

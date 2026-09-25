@@ -36,7 +36,7 @@
             <span class="player-status" :class="getConnectionStateClass(player)">{{ getConnectionSymbol(player) }}</span>
             {{ player.name }}
             <AppIcon v-if="player.connectionState === 'warning'" name="alert-triangle" size="sm" class="player-warning-icon" title="Rapid switching detected" />
-            <AppIcon v-if="player.choice !== null" name="check" size="sm" class="player-answered" />
+            <AppIcon v-if="hasAnswered(player)" name="check" size="sm" class="player-answered" />
             <div class="player-menu-container">
               <button class="btn-player-menu" @click="togglePlayerMenu(player.name)" title="Player actions">⋮</button>
               <div v-if="playerMenuOpen === player.name" class="player-menu">
@@ -63,7 +63,7 @@
             <span class="player-status" :class="getConnectionStateClass(player)">{{ getConnectionSymbol(player) }}</span>
             {{ player.name }}
             <AppIcon v-if="player.connectionState === 'warning'" name="alert-triangle" size="sm" class="player-warning-icon" title="Rapid switching detected" />
-            <AppIcon v-if="player.choice !== null" name="check" size="sm" class="player-answered" />
+            <AppIcon v-if="hasAnswered(player)" name="check" size="sm" class="player-answered" />
             <div class="player-menu-container">
               <button class="btn-player-menu" @click="togglePlayerMenu(player.name)" title="Player actions">⋮</button>
               <div v-if="playerMenuOpen === player.name" class="player-menu">
@@ -90,7 +90,7 @@
             <span class="player-status" :class="getConnectionStateClass(player)">{{ getConnectionSymbol(player) }}</span>
             {{ player.name }}
             <AppIcon v-if="player.connectionState === 'warning'" name="alert-triangle" size="sm" class="player-warning-icon" title="Rapid switching detected" />
-            <AppIcon v-if="player.choice !== null" name="check" size="sm" class="player-answered" />
+            <AppIcon v-if="hasAnswered(player)" name="check" size="sm" class="player-answered" />
             <div class="player-menu-container">
               <button class="btn-player-menu" @click="togglePlayerMenu(player.name)" title="Player actions">⋮</button>
               <div v-if="playerMenuOpen === player.name" class="player-menu">
@@ -115,12 +115,17 @@ import AppIcon from '@/components/common/AppIcon.vue'
 
 const props = defineProps({
   nonSpectatorPlayers: { type: Array, default: () => [] },
-  currentRoomCode: { type: String, default: null }
+  currentRoomCode: { type: String, default: null },
+  // Display names of players who have submitted the open round (quizzes with rounds)
+  submittedNames: { type: Array, default: () => [] }
 })
 
 defineEmits(['showPresenterProgress', 'kickPlayer', 'banDisplayName'])
 
 const playerMenuOpen = ref(null)
+
+// A player has answered if they picked a choice (one question at a time) or submitted the open round
+const hasAnswered = (player) => player.choice !== null || props.submittedNames.includes(player.name)
 
 // Group collapse state (disconnected starts collapsed)
 const groupCollapsed = ref({

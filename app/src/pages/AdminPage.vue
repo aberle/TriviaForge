@@ -47,6 +47,8 @@
           v-model:questionType="questionType"
           v-model:imageUrl="imageUrl"
           v-model:imageType="imageType"
+          v-model:roundIndex="questionRoundIndex"
+          :rounds="currentRounds"
           :choices="choices"
           :editingQuestionIdx="editingQuestionIdx"
           :draggedChoiceIdx="draggedChoiceIdx"
@@ -68,12 +70,18 @@
 
         <QuestionsList
           :questions="currentQuestions"
+          :rounds="currentRounds"
           :selectedQuiz="selectedQuiz"
           :editingQuestionIdx="editingQuestionIdx"
           :draggedQuestionIdx="draggedQuestionIdx"
           :dragOverIdx="dragOverIdx"
           @shuffleQuestions="shuffleQuestions"
           @shuffleAllChoices="shuffleAllChoices"
+          @enableRounds="enableRounds"
+          @addRound="addRound"
+          @updateRound="updateRound"
+          @deleteRound="deleteRound"
+          @moveQuestionToRound="moveQuestionToRound"
           @editQuestion="editQuestion"
           @moveQuestionUp="moveQuestionUp"
           @moveQuestionDown="moveQuestionDown"
@@ -548,6 +556,8 @@ const questionType = ref('multiple_choice')
 const imageUrl = ref(null)
 const imageType = ref(null)
 const currentQuestions = ref([])
+const currentRounds = ref([]) // [{ title, timeLimitSeconds }]; empty means the quiz has no rounds
+const questionRoundIndex = ref(0) // Round the question in the editor belongs to
 const importStatus = ref('')
 const showImportDuplicatesModal = ref(false)
 const importDuplicateResults = ref([])
@@ -644,6 +654,7 @@ const handleCreateQuizFromSelection = async (quiz) => {
 }
 
 const selectQuiz = async (quiz) => {
+  const isSameQuiz = selectedQuiz.value?.id === quiz.id
   selectedQuiz.value = quiz
   quizTitle.value = quiz.title
   quizDescription.value = quiz.description || ''
@@ -654,8 +665,56 @@ const selectQuiz = async (quiz) => {
   try {
     const response = await get(`/api/quizzes/${quiz.filename}`)
     currentQuestions.value = response.data.questions || []
+    currentRounds.value = response.data.rounds || []
+    if (!isSameQuiz) questionRoundIndex.value = 0
+    questionRoundIndex.value = Math.min(questionRoundIndex.value, Math.max(0, currentRounds.value.length - 1))
   } catch (err) {
     console.error('Error loading quiz questions:', err)
+  }
+}
+
+// Which round a question belongs to. A quiz without rounds is treated as a single round.
+const roundOf = (question) => (currentRounds.value.length ? (question.roundIndex ?? 0) : 0)
+
+// Build the questions/rounds part of a quiz save. With rounds, every question needs a valid
+// roundIndex and the list must be ordered by round (the server requires contiguous rounds);
+// without rounds, roundIndex is dropped.
+const buildQuizPayload = (questions, rounds) => {
+  if (rounds.length === 0) {
+    return { rounds: [], questions: questions.map(({ roundIndex, ...q }) => q) }
+  }
+  const lastRound = rounds.length - 1
+  const ordered = questions.map(q => ({
+    ...q,
+    roundIndex: Math.min(Math.max(Number.isInteger(q.roundIndex) ? q.roundIndex : 0, 0), lastRound)
+  }))
+  // Array.prototype.sort is stable, so questions keep their relative order within a round
+  ordered.sort((a, b) => a.roundIndex - b.roundIndex)
+  return {
+    rounds: rounds.map(r => ({ title: r.title || '', timeLimitSeconds: r.timeLimitSeconds || null })),
+    questions: ordered
+  }
+}
+
+// Save the selected quiz. Every quiz save goes through here so rounds can't be dropped:
+// the server replaces a quiz's rounds on every full save.
+const persistQuiz = async (questions = currentQuestions.value, rounds = currentRounds.value) => {
+  await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
+    title: quizTitle.value,
+    description: quizDescription.value,
+    ...buildQuizPayload(questions, rounds)
+  })
+}
+
+// Persist a change and reload the quiz from the server
+const saveAndReload = async (questions, rounds, errorMessage) => {
+  try {
+    await persistQuiz(questions, rounds)
+    await loadQuizzes()
+    await selectQuiz(selectedQuiz.value)
+  } catch (err) {
+    showAlert(`${errorMessage}: ${err.message}`, 'Error')
+    await selectQuiz(selectedQuiz.value)
   }
 }
 
@@ -663,11 +722,7 @@ const selectQuiz = async (quiz) => {
 const saveQuizTitle = async () => {
   if (!selectedQuiz.value) return
   try {
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: currentQuestions.value
-    })
+    await persistQuiz()
     originalQuizTitle.value = quizTitle.value
     await loadQuizzes()
     showAlert('Quiz title updated')
@@ -680,11 +735,7 @@ const saveQuizTitle = async () => {
 const saveQuizDescription = async () => {
   if (!selectedQuiz.value) return
   try {
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: currentQuestions.value
-    })
+    await persistQuiz()
     originalQuizDescription.value = quizDescription.value
     await loadQuizzes()
     showAlert('Quiz description updated')
@@ -712,6 +763,7 @@ const deleteQuiz = async (filename) => {
       if (selectedQuiz.value?.filename === filename) {
         selectedQuiz.value = null
         currentQuestions.value = []
+        currentRounds.value = []
       }
       showAlert('Quiz deleted successfully')
     } catch (err) {
@@ -905,6 +957,7 @@ const editQuestion = (idx) => {
   questionType.value = question.type || 'multiple_choice'
   imageUrl.value = question.imageUrl || null
   imageType.value = question.imageType || null
+  questionRoundIndex.value = question.roundIndex ?? 0
   editingQuestionIdx.value = idx
   // Scroll to editor
   document.querySelector('.question-editor')?.scrollIntoView({ behavior: 'smooth' })
@@ -979,7 +1032,8 @@ const saveQuestion = async () => {
     correctChoice: parseInt(correctChoice.value),
     type: questionType.value,
     imageUrl: imageUrl.value,
-    imageType: imageType.value
+    imageType: imageType.value,
+    roundIndex: currentRounds.value.length ? questionRoundIndex.value : undefined
   }
 
   // Check for duplicates in Question Bank (only for new questions)
@@ -1025,11 +1079,7 @@ const executeSaveQuestion = async (question) => {
     }
 
     // Update quiz on server with all questions
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: currentQuestions.value
-    })
+    await persistQuiz()
 
     // Reset form
     clearQuestionForm()
@@ -1071,11 +1121,7 @@ const deleteQuestion = async (idx) => {
       currentQuestions.value.splice(idx, 1)
 
       // Update quiz on server with remaining questions
-      await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-        title: quizTitle.value,
-        description: quizDescription.value,
-        questions: currentQuestions.value
-      })
+      await persistQuiz()
 
       showAlert('Question deleted successfully')
       // Refresh the quiz list to update question count and reload questions
@@ -1100,15 +1146,19 @@ const shuffleArray = (array) => {
 const shuffleQuestions = async () => {
   if (!selectedQuiz.value) return
   try {
-    // Shuffle questions locally
-    const shuffledQuestions = shuffleArray(currentQuestions.value)
+    // Shuffle within each round so questions never cross a round boundary
+    const byRound = new Map()
+    for (const question of currentQuestions.value) {
+      const round = roundOf(question)
+      if (!byRound.has(round)) byRound.set(round, [])
+      byRound.get(round).push(question)
+    }
+    const shuffledQuestions = [...byRound.keys()]
+      .sort((a, b) => a - b)
+      .flatMap(round => shuffleArray(byRound.get(round)))
 
     // Save shuffled questions via PUT endpoint
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: shuffledQuestions
-    })
+    await persistQuiz(shuffledQuestions)
 
     // Reload to refresh display
     await loadQuizzes()
@@ -1119,89 +1169,109 @@ const shuffleQuestions = async () => {
   }
 }
 
-// Question reordering functions
+// Question reordering functions. Reordering stays inside a round; a question changes
+// round only by dropping it on another round's question or with the round selector.
 const moveQuestionUp = async (idx) => {
-  if (idx === 0 || !selectedQuiz.value) return
-  try {
-    const reorderedQuestions = [...currentQuestions.value]
-    // Swap with previous question
-    ;[reorderedQuestions[idx], reorderedQuestions[idx - 1]] = [reorderedQuestions[idx - 1], reorderedQuestions[idx]]
-
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: reorderedQuestions
-    })
-
-    await loadQuizzes()
-    selectQuiz(selectedQuiz.value)
-  } catch (err) {
-    showAlert('Error reordering question: ' + err.message, 'Error')
-  }
+  const questions = currentQuestions.value
+  if (idx === 0 || !selectedQuiz.value || roundOf(questions[idx - 1]) !== roundOf(questions[idx])) return
+  const reorderedQuestions = [...questions]
+  // Swap with previous question
+  ;[reorderedQuestions[idx], reorderedQuestions[idx - 1]] = [reorderedQuestions[idx - 1], reorderedQuestions[idx]]
+  await saveAndReload(reorderedQuestions, currentRounds.value, 'Error reordering question')
 }
 
 const moveQuestionDown = async (idx) => {
-  if (idx >= currentQuestions.value.length - 1 || !selectedQuiz.value) return
-  try {
-    const reorderedQuestions = [...currentQuestions.value]
-    // Swap with next question
-    ;[reorderedQuestions[idx], reorderedQuestions[idx + 1]] = [reorderedQuestions[idx + 1], reorderedQuestions[idx]]
-
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: reorderedQuestions
-    })
-
-    await loadQuizzes()
-    selectQuiz(selectedQuiz.value)
-  } catch (err) {
-    showAlert('Error reordering question: ' + err.message, 'Error')
-  }
+  const questions = currentQuestions.value
+  if (idx >= questions.length - 1 || !selectedQuiz.value || roundOf(questions[idx + 1]) !== roundOf(questions[idx])) return
+  const reorderedQuestions = [...questions]
+  // Swap with next question
+  ;[reorderedQuestions[idx], reorderedQuestions[idx + 1]] = [reorderedQuestions[idx + 1], reorderedQuestions[idx]]
+  await saveAndReload(reorderedQuestions, currentRounds.value, 'Error reordering question')
 }
 
 const moveQuestionToFirst = async (idx) => {
-  if (idx === 0 || !selectedQuiz.value) return
-  try {
-    const reorderedQuestions = [...currentQuestions.value]
-    // Remove question from current position
-    const [movedQuestion] = reorderedQuestions.splice(idx, 1)
-    // Insert at beginning
-    reorderedQuestions.unshift(movedQuestion)
-
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: reorderedQuestions
-    })
-
-    await loadQuizzes()
-    selectQuiz(selectedQuiz.value)
-  } catch (err) {
-    showAlert('Error reordering question: ' + err.message, 'Error')
-  }
+  if (!selectedQuiz.value) return
+  const questions = currentQuestions.value
+  const round = roundOf(questions[idx])
+  const firstIdx = questions.findIndex(q => roundOf(q) === round)
+  if (idx === firstIdx) return
+  const reorderedQuestions = [...questions]
+  // Remove question from current position and insert at the start of its round
+  const [movedQuestion] = reorderedQuestions.splice(idx, 1)
+  reorderedQuestions.splice(firstIdx, 0, movedQuestion)
+  await saveAndReload(reorderedQuestions, currentRounds.value, 'Error reordering question')
 }
 
 const moveQuestionToLast = async (idx) => {
-  if (idx >= currentQuestions.value.length - 1 || !selectedQuiz.value) return
-  try {
-    const reorderedQuestions = [...currentQuestions.value]
-    // Remove question from current position
-    const [movedQuestion] = reorderedQuestions.splice(idx, 1)
-    // Insert at end
-    reorderedQuestions.push(movedQuestion)
+  if (!selectedQuiz.value) return
+  const questions = currentQuestions.value
+  const round = roundOf(questions[idx])
+  const lastIdx = questions.map(roundOf).lastIndexOf(round)
+  if (idx === lastIdx) return
+  const reorderedQuestions = [...questions]
+  // Remove question from current position and insert at the end of its round
+  const [movedQuestion] = reorderedQuestions.splice(idx, 1)
+  reorderedQuestions.splice(lastIdx, 0, movedQuestion)
+  await saveAndReload(reorderedQuestions, currentRounds.value, 'Error reordering question')
+}
 
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: reorderedQuestions
-    })
+// Move a question into another round (it lands where its position in the list puts it)
+const moveQuestionToRound = async ({ idx, roundIdx }) => {
+  if (!selectedQuiz.value || roundOf(currentQuestions.value[idx]) === roundIdx) return
+  const questions = currentQuestions.value.map((q, i) => (i === idx ? { ...q, roundIndex: roundIdx } : q))
+  await saveAndReload(questions, currentRounds.value, 'Error moving question')
+}
 
-    await loadQuizzes()
-    selectQuiz(selectedQuiz.value)
-  } catch (err) {
-    showAlert('Error reordering question: ' + err.message, 'Error')
+// Round management. Rounds are optional: a quiz with none plays as a flat list.
+const enableRounds = async () => {
+  if (!selectedQuiz.value) return
+  const questions = currentQuestions.value.map(q => ({ ...q, roundIndex: 0 }))
+  await saveAndReload(questions, [{ title: 'Round 1', timeLimitSeconds: null }], 'Error enabling rounds')
+}
+
+const addRound = async () => {
+  if (!selectedQuiz.value) return
+  const rounds = [...currentRounds.value, { title: `Round ${currentRounds.value.length + 1}`, timeLimitSeconds: null }]
+  await saveAndReload(currentQuestions.value, rounds, 'Error adding round')
+}
+
+// Only the fields present in the payload change: renaming keeps the time limit, and an
+// explicit null time limit makes the round untimed
+const updateRound = async ({ roundIdx, title, timeLimitSeconds }) => {
+  if (!selectedQuiz.value) return
+  const existing = currentRounds.value[roundIdx]
+  const limit = timeLimitSeconds === undefined ? existing.timeLimitSeconds : (timeLimitSeconds === null ? null : Number(timeLimitSeconds))
+  if (limit !== null && (!Number.isInteger(limit) || limit < 10 || limit > 3600)) {
+    showAlert('A round time limit must be between 10 and 3600 seconds, or blank for untimed', 'Invalid Time Limit')
+    await selectQuiz(selectedQuiz.value)
+    return
   }
+  const rounds = currentRounds.value.map((r, i) => (i === roundIdx ? { title: (title ?? r.title).trim(), timeLimitSeconds: limit } : r))
+  await saveAndReload(currentQuestions.value, rounds, 'Error updating round')
+}
+
+const deleteRound = async (roundIdx) => {
+  if (!selectedQuiz.value) return
+  const rounds = currentRounds.value
+  const count = currentQuestions.value.filter(q => roundOf(q) === roundIdx).length
+  const isOnlyRound = rounds.length === 1
+  const message = isOnlyRound
+    ? 'Delete the only round? The quiz will go back to a flat list of questions.'
+    : `Delete this round? Its ${count} question${count === 1 ? '' : 's'} will move into the ${roundIdx > 0 ? 'previous' : 'next'} round.`
+  if (!(await showConfirm(message, 'Delete Round'))) return
+
+  if (isOnlyRound) {
+    await saveAndReload(currentQuestions.value, [], 'Error deleting round')
+    return
+  }
+  // Questions of the deleted round join its neighbour; later rounds shift down by one
+  const target = roundIdx > 0 ? roundIdx - 1 : 1
+  const remap = (ri) => {
+    const t = ri === roundIdx ? target : ri
+    return t > roundIdx ? t - 1 : t
+  }
+  const questions = currentQuestions.value.map(q => ({ ...q, roundIndex: remap(roundOf(q)) }))
+  await saveAndReload(questions, rounds.filter((_, i) => i !== roundIdx), 'Error deleting round')
 }
 
 // Drag-and-drop handlers
@@ -1232,14 +1302,13 @@ const handleDrop = async (event, dropIdx) => {
     const reorderedQuestions = [...currentQuestions.value]
     // Remove from old position
     const [movedQuestion] = reorderedQuestions.splice(dragIdx, 1)
+    // Dropping on a question in another round moves the dragged question into that round
+    const targetRound = roundOf(currentQuestions.value[dropIdx])
+    const moved = currentRounds.value.length ? { ...movedQuestion, roundIndex: targetRound } : movedQuestion
     // Insert at new position
-    reorderedQuestions.splice(dropIdx, 0, movedQuestion)
+    reorderedQuestions.splice(dropIdx, 0, moved)
 
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: reorderedQuestions
-    })
+    await persistQuiz(reorderedQuestions)
 
     await loadQuizzes()
     selectQuiz(selectedQuiz.value)
@@ -1330,11 +1399,7 @@ const shuffleAllChoices = async () => {
     })
 
     // Save shuffled choices via PUT endpoint
-    await put(`/api/quizzes/${selectedQuiz.value.filename}`, {
-      title: quizTitle.value,
-      description: quizDescription.value,
-      questions: updatedQuestions
-    })
+    await persistQuiz(updatedQuestions)
 
     // Reload to refresh display
     await loadQuizzes()

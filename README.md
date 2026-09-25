@@ -2,7 +2,7 @@
 
 A production-ready, real-time interactive trivia game platform built with **Vue 3**, **Socket.IO**, and **PostgreSQL**. Designed for educators, event organizers, and trivia enthusiasts with robust connection stability, persistent player sessions, and estimated capacity for 50+ concurrent players.
 
-**Latest Release**: v5.15.0 - Open-Ended (Short Answer) Questions (see [ROADMAP.md](ROADMAP.md) for full release history)
+**Latest Release**: v5.16.0 - Multiple Rounds (see [ROADMAP.md](ROADMAP.md) for full release history)
 
 ### Key Highlights
 
@@ -29,6 +29,7 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 - **Question Bank**: Centralized question management across all quizzes with search, filter, and archive capabilities
 - **Tag System**: Organize questions with customizable color-coded tags
 - **Duplicate Detection**: Find and manage duplicate questions with similarity-based detection and merge tools
+- **Multiple Rounds**: Split a live quiz into rounds of any size. Each round can be timed or ended by the presenter, and a leaderboard shows between rounds (see [docs/rounds.md](docs/rounds.md))
 - **Question Types**: Support for Multiple Choice, True/False, and Open-Ended (Short Answer) questions
 - **Open-Ended Answer Grading**: Fuzzy-match auto-grading against admin-supplied accepted answers, with an admin-configurable match strictness threshold
 - **Image Support**: Add images to questions via file upload or external URL
@@ -111,11 +112,12 @@ A production-ready, real-time interactive trivia game platform built with **Vue 
 - **Enhanced Connection Stability**: Infinite reconnection attempts with intelligent page visibility detection (30-second debounce)
 - **Real-time Feedback**: Instant answer submission and result display in live games
 - **Open-Ended Answers**: Type free-text answers for short-answer questions, with automatic grading; a timed-out answer auto-submits whatever's currently typed
+- **Round Play**: In a round quiz, answer every question of the round at your own pace and submit once; answers and the leaderboard appear when the round ends. Answers you've entered are saved as you go, so a dropped connection doesn't lose them, and you can change and resubmit them until the round ends
 - **Answer Locking**: Prevents re-answering after submission (even on reconnection)
 - **Smart Reconnection**: Automatically restore progress when rejoining with full state preservation via RoomSessionID
 - **Progress Tracking**: Comprehensive modal showing detailed session statistics and question-by-question history with correct/incorrect/pending status (persists across disconnections)
 - **Question Progress Counter**: Live "X / Y" counter in navbar showing game progress
-- **End-of-Game Results**: Celebratory podium display showing top 3 players with gold/silver/bronze and full rankings
+- **End-of-Game Results**: Celebratory podium display showing top 3 players with gold/silver/bronze, plus a full leaderboard of every player (ties share a rank, and each player's own row is highlighted)
 - **Quiz Complete Notification**: Clear "Quiz Complete!" screen with countdown transition when results are enabled
 - **Account System**: Guest accounts with optional registration for persistent profiles
 - **Recent Rooms**: Quick rejoin to recently played active rooms
@@ -562,6 +564,10 @@ Set environment variables for custom scenarios:
 docker-compose exec -e TEST_PLAYERS=30 app node testing/test-runner.js
 ```
 
+### Rounds Test
+
+`npm run test:rounds` (from `app/`) drives a running server over real Socket.IO connections (presenter, players, display) through a two-round quiz and checks answer leaks, timer expiry, reconnects, resume and persistence. Set `TEST_BASE_URL` and `TEST_ADMIN_PASSWORD` (and `DATABASE_URL` to also verify what was saved). It takes about 30 seconds.
+
 **Available Environment Variables:**
 - `TEST_PLAYERS` - Number of simulated players (default: 5)
 - `TEST_QUIZ_ID` - Quiz to use (default: 1)
@@ -719,6 +725,7 @@ Environment variables can be set in multiple ways (listed by precedence, highest
 | `SESSION_TIMEOUT` | Session expiration time (ms) | `3600000` (1 hour) | No |
 | `NODE_ENV` | Environment mode (`development` or `production`) | `production` | No |
 | `DEBUG_MODE` | Enable comprehensive debug logging (server-side) | `false` | No |
+| `GUEST_ONLY_MODE` | Players join live games with just a display name (no usernames or accounts) | `false` | No |
 | `TZ` | Timezone for timestamps | `America/New_York` | No |
 | `APP_NAME` | Application name | `TriviaForge` | No |
 | `SOCKET_RATE_WINDOW_MS` | Socket.IO rate limit window (ms) | `60000` (1 min) | No |

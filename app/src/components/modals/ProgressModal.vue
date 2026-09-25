@@ -6,7 +6,7 @@
     title="Your Progress"
   >
     <template #default>
-      <div class="progress-content">
+      <div class="progress-content no-select">
         <!-- Stats Summary -->
         <div v-if="presentedQuestions.length > 0" class="progress-stats">
           <div class="stat-card correct">
@@ -30,9 +30,12 @@
         <!-- Question History -->
         <div v-if="presentedQuestions.length > 0" class="question-history">
           <h4>Question History</h4>
+          <template v-for="(q, idx) in presentedQuestions" :key="q.index">
+          <!-- Quizzes with rounds: a heading above the first question of each round -->
+          <h5 v-if="q.roundTitle && (idx === 0 || presentedQuestions[idx - 1].roundIndex !== q.roundIndex)" class="round-heading">
+            <AppIcon name="layers" size="sm" /> Round {{ q.roundIndex + 1 }}: {{ q.roundTitle }}
+          </h5>
           <div
-            v-for="(q, idx) in presentedQuestions"
-            :key="q.index"
             class="history-item"
             :class="getQuestionStatusClass(q)"
           >
@@ -41,20 +44,26 @@
               <div v-if="q.imageUrl" class="history-image">
                 <img :src="q.imageUrl" alt="Question image" @error="handleImageError" />
               </div>
-              <div class="history-answer">
-                <strong class="answer-label">Your answer:</strong>
-                {{ q.playerChoice !== null ? `${String.fromCharCode(65 + q.playerChoice)}. ${q.choices[q.playerChoice]}` : 'No answer submitted' }}
+              <div v-if="q.inProgress" class="history-answer">
+                Answers and results appear when this round ends.
               </div>
-              <div v-if="q.revealed" class="history-correct">
-                <strong class="correct-label">Correct answer:</strong>
-                {{ `${String.fromCharCode(65 + q.correctChoice)}. ${q.choices[q.correctChoice]}` }}
-              </div>
+              <template v-else>
+                <div class="history-answer">
+                  <strong class="answer-label">Your answer:</strong>
+                  {{ formatPlayerAnswer(q) }}
+                </div>
+                <div v-if="q.revealed" class="history-correct">
+                  <strong class="correct-label">Correct answer:</strong>
+                  {{ formatCorrectAnswer(q) }}
+                </div>
+              </template>
             </div>
             <div class="history-status" :class="getQuestionStatusClass(q)">
               <AppIcon :name="getQuestionStatusIcon(q)" size="xl" class="status-icon" />
               <div class="status-text">{{ getQuestionStatusText(q) }}</div>
             </div>
           </div>
+          </template>
         </div>
 
         <!-- Empty State -->
@@ -89,6 +98,7 @@ const accuracy = computed(() => answeredCount.value > 0 ? ((correctCount.value /
 
 // Helper functions for question status display
 const getQuestionStatusClass = (q) => {
+  if (q.inProgress) return 'answered';
   if (q.missedWhileAway && q.revealed) return 'missed-away';
   if (q.revealed && q.isCorrect) return 'correct';
   if (q.revealed && !q.isCorrect) return 'incorrect';
@@ -97,6 +107,7 @@ const getQuestionStatusClass = (q) => {
 };
 
 const getQuestionStatusIcon = (q) => {
+  if (q.inProgress) return 'clock';
   if (q.missedWhileAway && q.revealed) return 'alert-triangle';
   if (q.revealed && q.isCorrect) return 'check';
   if (q.revealed && !q.isCorrect) return 'x';
@@ -105,11 +116,27 @@ const getQuestionStatusIcon = (q) => {
 };
 
 const getQuestionStatusText = (q) => {
+  if (q.inProgress) return 'In progress';
   if (q.missedWhileAway && q.revealed) return 'Missed - Away';
   if (q.revealed && q.isCorrect) return 'Correct';
   if (q.revealed && !q.isCorrect) return 'Incorrect';
   if (q.playerChoice !== null) return 'Waiting for reveal';
   return 'Not answered';
+};
+
+// What the player answered: a typed answer for short-answer questions, otherwise "B. Rome"
+const formatPlayerAnswer = (q) => {
+  if (q.playerChoice === null || q.playerChoice === undefined || q.playerChoice === '') return 'No answer submitted';
+  if (q.type === 'short_answer') return q.playerChoice;
+  return `${String.fromCharCode(65 + q.playerChoice)}. ${q.choices[q.playerChoice]}`;
+};
+
+const formatCorrectAnswer = (q) => {
+  if (q.type === 'short_answer') {
+    const accepted = (q.acceptedAnswers || []).map((a) => a.answer_text);
+    return (accepted.length ? accepted : q.choices || []).join(', ');
+  }
+  return `${String.fromCharCode(65 + q.correctChoice)}. ${q.choices[q.correctChoice]}`;
 };
 
 // Handle broken images
@@ -119,6 +146,19 @@ const handleImageError = (event) => {
 </script>
 
 <style scoped>
+.round-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--info-bg-20);
+  border-left: 4px solid var(--info-light);
+  border-radius: 4px;
+  color: var(--info-light);
+  font-size: 0.95rem;
+}
+
 .progress-content {
   display: flex;
   flex-direction: column;

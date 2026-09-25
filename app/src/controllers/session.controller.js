@@ -165,6 +165,25 @@ function parseSessionId(filename) {
 }
 
 /**
+ * Rounds a session was played in (v5.16.0), from the per-session snapshot.
+ * Empty for a session that had no rounds.
+ *
+ * @param {number} sessionId - game_sessions.id
+ * @returns {Promise<Array<{order: number, title: string, timeLimitSeconds: number|null}>>}
+ */
+async function fetchSessionRounds(sessionId) {
+  const result = await query(
+    'SELECT round_order, title, time_limit_seconds FROM session_rounds WHERE game_session_id = $1 ORDER BY round_order',
+    [sessionId]
+  );
+  return result.rows.map((r) => ({
+    order: r.round_order,
+    title: r.title,
+    timeLimitSeconds: r.time_limit_seconds,
+  }));
+}
+
+/**
  * List all sessions with optional filters
  * GET /api/sessions
  * Query params: dateFrom, dateTo, quizId, status, search
@@ -370,6 +389,7 @@ export async function getSession(req, res, next) {
         sq.presentation_order,
         sq.is_presented,
         sq.is_revealed,
+        sq.round_order,
         qs.question_text,
         qs.question_type,
         qs.image_url,
@@ -411,6 +431,7 @@ export async function getSession(req, res, next) {
         type,
         choices,
         correctChoice,
+        roundOrder: row.round_order, // 1-based round this question was played in; null without rounds
       };
 
       if (type === 'short_answer') {
@@ -442,6 +463,7 @@ export async function getSession(req, res, next) {
         : null,
       presentedQuestions,
       revealedQuestions,
+      rounds: await fetchSessionRounds(sessionId),
       questions,
       players: playerResults, // For backwards compatibility
       playerResults, // With calculated statistics for modal
@@ -648,6 +670,7 @@ async function getFullSessionData(sessionId) {
       sq.presentation_order,
       sq.is_presented,
       sq.is_revealed,
+      sq.round_order,
       qs.question_text,
       qs.question_type,
       qs.image_url,
@@ -687,6 +710,7 @@ async function getFullSessionData(sessionId) {
       type,
       choices,
       correctChoice,
+      roundOrder: row.round_order, // 1-based round this question was played in; null without rounds
     };
 
     if (type === 'short_answer') {
@@ -709,6 +733,7 @@ async function getFullSessionData(sessionId) {
     createdAt: session.created_at,
     completedAt: session.completed_at,
     presentedQuestions,
+    rounds: await fetchSessionRounds(sessionId),
     questions,
     playerResults: Array.from(playersMap.values()),
   };

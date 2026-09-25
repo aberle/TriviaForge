@@ -5,7 +5,7 @@
  * All validation functions return { valid: boolean, error?: string } format.
  */
 
-import { VALIDATION_RULES, ERROR_CODES } from '../config/constants.js';
+import { VALIDATION_RULES, ERROR_CODES, ROUND_CONSTRAINTS } from '../config/constants.js';
 import { ValidationError } from './errors.js';
 
 /**
@@ -256,6 +256,84 @@ export function validateAnswerChoice(choiceText) {
 }
 
 /**
+ * Validate a quiz's rounds against its ordered question list.
+ * Rounds are contiguous ranges of the question list: each question carries a
+ * zero-based `roundIndex`, and those indexes must never decrease down the list.
+ * No rounds (undefined, null or empty) is valid and means a round-less quiz.
+ *
+ * @param {Array<{title?: string, timeLimitSeconds?: number|null}>} rounds - Round definitions
+ * @param {Array<{roundIndex?: number}>} questions - Ordered questions
+ * @returns {ValidationResult}
+ */
+export function validateRounds(rounds, questions) {
+  if (rounds === undefined || rounds === null) {
+    return { valid: true };
+  }
+
+  if (!Array.isArray(rounds)) {
+    return { valid: false, error: 'Rounds must be an array' };
+  }
+
+  if (rounds.length === 0) {
+    return { valid: true };
+  }
+
+  if (rounds.length > ROUND_CONSTRAINTS.MAX_ROUNDS) {
+    return {
+      valid: false,
+      error: `A quiz cannot have more than ${ROUND_CONSTRAINTS.MAX_ROUNDS} rounds`,
+    };
+  }
+
+  for (let i = 0; i < rounds.length; i++) {
+    const round = rounds[i];
+    if (!round || typeof round !== 'object') {
+      return { valid: false, error: `Round ${i + 1} is invalid` };
+    }
+
+    if (round.title !== undefined && round.title !== null) {
+      if (typeof round.title !== 'string') {
+        return { valid: false, error: `Round ${i + 1} title must be text` };
+      }
+      if (round.title.trim().length > ROUND_CONSTRAINTS.MAX_TITLE_LENGTH) {
+        return {
+          valid: false,
+          error: `Round ${i + 1} title must not exceed ${ROUND_CONSTRAINTS.MAX_TITLE_LENGTH} characters`,
+        };
+      }
+    }
+
+    const limit = round.timeLimitSeconds;
+    if (limit !== undefined && limit !== null) {
+      if (
+        !Number.isInteger(limit) ||
+        limit < ROUND_CONSTRAINTS.MIN_TIME_LIMIT_SECONDS ||
+        limit > ROUND_CONSTRAINTS.MAX_TIME_LIMIT_SECONDS
+      ) {
+        return {
+          valid: false,
+          error: `Round ${i + 1} time limit must be between ${ROUND_CONSTRAINTS.MIN_TIME_LIMIT_SECONDS} and ${ROUND_CONSTRAINTS.MAX_TIME_LIMIT_SECONDS} seconds`,
+        };
+      }
+    }
+  }
+
+  let previous = 0;
+  for (let i = 0; i < (questions || []).length; i++) {
+    const idx = questions[i]?.roundIndex;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= rounds.length) {
+      return { valid: false, error: `Question ${i + 1} must belong to a valid round` };
+    }
+    if (idx < previous) {
+      return { valid: false, error: 'Questions must be ordered by round' };
+    }
+    previous = idx;
+  }
+
+  return { valid: true };
+}
+
+/**
  * Validate object against a schema
  * Used for complex validation scenarios
  *
@@ -474,6 +552,7 @@ export default {
   validateQuizTitle,
   validateQuestionText,
   validateAnswerChoice,
+  validateRounds,
   validateObject,
   validateBody,
   validateQuery,

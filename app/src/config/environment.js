@@ -57,6 +57,10 @@ export const env = {
 
   // Debug & Logging
   debugMode: parseBoolean(process.env[ENV_VARS.DEBUG_MODE], false),
+
+  // Guest-only mode: players join live games with just a display name (no usernames or
+  // accounts). Off by default.
+  guestOnly: parseBoolean(process.env[ENV_VARS.GUEST_ONLY_MODE], false),
   verboseLogging: parseBoolean(process.env[ENV_VARS.VERBOSE_LOGGING], false),
 
   // Socket.IO Rate Limiting (v5.5.0)

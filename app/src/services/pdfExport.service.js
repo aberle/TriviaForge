@@ -337,7 +337,8 @@ async function drawQuestionPages(doc, sessionData) {
     let y = 50;
 
     // ── Question header ──
-    const qNum = `Question ${qi + 1} of ${sessionData.questions.length}`;
+    const qRound = (sessionData.rounds || []).find((r) => r.order === q.roundOrder);
+    const qNum = `Question ${qi + 1} of ${sessionData.questions.length}${qRound ? ` - Round ${qRound.order}: ${qRound.title}` : ''}`;
     drawRect(doc, PAGE.margin, y, CONTENT_W, 22, BRAND.primary, 4);
     doc.fontSize(9).font('Helvetica-Bold').fillColor(BRAND.white)
       .text(qNum, PAGE.margin + 8, y + 7, { width: CONTENT_W - 16 });

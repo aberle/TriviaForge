@@ -8,9 +8,8 @@
       :connectionStateSymbol="connectionStateSymbol"
       :menuOpen="menuOpen"
       :nonSpectatorPlayers="nonSpectatorPlayers"
-      :loginUsername="loginUsername"
-      :revealedCount="revealedCount"
-      :totalQuestions="totalQuestions"
+      :loginUsername="guestOnlyMode ? '' : loginUsername"
+      :quizTitle="quizTitle"
       @showProgress="showProgressModal"
       @toggleMenu="toggleMenu"
       @leaveRoom="handleLeaveRoomClick"
@@ -37,13 +36,13 @@
       </div>
 
       <!-- Left/Top: Question Display -->
-      <div class="question-area">
+      <div class="question-area no-select">
         <!-- End-of-Game Results Podium (v5.6.0) -->
         <GameResults
           v-if="quizResultsData && !questionDisplaying"
           :players="quizResultsData.players"
           :totalQuestions="quizResultsData.totalQuestions"
-          :classAverage="quizResultsData.classAverage"
+          :highlightName="currentDisplayName || ''"
         />
 
         <!-- Quiz Complete Screen (v5.6.0) - shown for ALL quizzes on completion -->
@@ -57,6 +56,36 @@
             Check your <strong>Progress</strong> to see how you did!
           </p>
         </div>
+
+        <!-- Rounds (v5.16.0): every question of the round at once, then results + leaderboard -->
+        <RoundQuestions
+          v-else-if="roundPhase === 'open' && roundCurrent"
+          :key="roundCurrent.roundIndex"
+          :round="roundCurrent"
+          :serverDraft="roundDraft"
+          :serverSubmitted="roundSubmittedAnswers"
+          :submitAckVersion="roundSubmitAckVersion"
+          :submitted="roundSubmitted"
+          :submitMessage="roundSubmitMessage"
+          :progress="roundProgress"
+          :connected="isConnected"
+          :snapshotVersion="roundSnapshotVersion"
+          @saveDraft="saveRoundDraft"
+          @submit="submitRound"
+          @submitAccepted="onRoundSubmitAccepted"
+        />
+        <RoundReview
+          v-else-if="roundPhase === 'ended' && roundLastEnded"
+          :ended="roundLastEnded"
+          :youName="currentDisplayName || ''"
+        />
+
+        <!-- Refresh: rejoining the room the player was in (instead of flashing the landing page) -->
+        <ReconnectingDisplay
+          v-else-if="reconnecting && !inRoom"
+          :roomCode="reconnectingRoomCode"
+          @cancel="cancelReconnect"
+        />
 
         <!-- Waiting Screen -->
         <WaitingDisplay
@@ -84,7 +113,7 @@
       </div>
 
       <!-- Right/Bottom: Room/Sidebar -->
-      <div class="sidebar" :class="{ 'hidden-mobile-in-room': inRoom }">
+      <div v-show="!reconnecting || inRoom" class="sidebar" :class="{ 'hidden-mobile-in-room': inRoom }">
         <!-- Join Section -->
         <JoinRoomSection
           v-if="!inRoom"
@@ -92,6 +121,8 @@
           v-model:usernameInput="usernameInput"
           v-model:displayNameInput="displayNameInput"
           v-model:roomCodeInput="roomCodeInput"
+          :guestOnly="guestOnlyMode"
+          :displayNameLocked="!!lockedDisplayName"
           @changeUsername="handleChangeUsername"
           @joinRoom="handleJoinRoom"
           @manageAccount="handleManageAccount"
@@ -136,7 +167,7 @@
     <!-- Progress Modal -->
     <ProgressModal
       :isOpen="showProgressModalFlag"
-      :questionHistory="questionHistory"
+      :questionHistory="progressItems"
       @close="showProgressModalFlag = false"
     />
 
@@ -187,6 +218,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useSocket } from '@/composables/useSocket.js'
 import { useWakeLock } from '@/composables/useWakeLock.js'
+import { useRounds } from '@/composables/useRounds.js'
 import { useApi } from '@/composables/useApi.js'
 import { useUIStore } from '@/stores/ui.js'
 import { useTheme } from '@/composables/useTheme.js'
@@ -200,8 +232,11 @@ import ProgressModal from '@/components/modals/ProgressModal.vue'
 import AnswerConfirmModal from '@/components/modals/AnswerConfirmModal.vue'
 import PlayerNavbar from '@/components/player/PlayerNavbar.vue'
 import GameResults from '@/components/player/GameResults.vue'
+import RoundQuestions from '@/components/rounds/RoundQuestions.vue'
+import RoundReview from '@/components/rounds/RoundReview.vue'
 import QuestionDisplay from '@/components/player/QuestionDisplay.vue'
 import WaitingDisplay from '@/components/player/WaitingDisplay.vue'
+import ReconnectingDisplay from '@/components/player/ReconnectingDisplay.vue'
 import JoinRoomSection from '@/components/player/JoinRoomSection.vue'
 import RoomInfoSection from '@/components/player/RoomInfoSection.vue'
 import PlayersList from '@/components/player/PlayersList.vue'
@@ -213,7 +248,22 @@ const router = useRouter()
 const route = useRoute()
 const socket = useSocket()
 const wakeLock = useWakeLock()
-const { post } = useApi()
+const rounds = useRounds(socket)
+const {
+  enabled: roundsEnabled,
+  history: roundHistory,
+  phase: roundPhase,
+  current: roundCurrent,
+  progress: roundProgress,
+  lastEnded: roundLastEnded,
+  myDraft: roundDraft,
+  mySubmittedAnswers: roundSubmittedAnswers,
+  submitAckVersion: roundSubmitAckVersion,
+  submitted: roundSubmitted,
+  submitMessage: roundSubmitMessage,
+  snapshotVersion: roundSnapshotVersion
+} = rounds
+const { post, get } = useApi()
 const uiStore = useUIStore()
 
 // Initialize theme for PlayerPage (grey theme default)
@@ -260,9 +310,6 @@ const playerGotCorrect = ref(false)
 const answeredCurrentQuestion = ref(false)
 const answeredQuestions = new Set()
 
-// Question progress counter
-const revealedCount = ref(0)
-const totalQuestions = ref(0)
 
 // End-of-game state (v5.6.0)
 const quizResultsData = ref(null)
@@ -274,6 +321,41 @@ let countdownInterval = null
 const questionHistory = ref([])
 const recentRooms = ref([])
 const activeRoomCodes = ref(null) // null = not loaded yet, [] = no active rooms
+// Guest-only mode is a server setting (GUEST_ONLY_MODE). The last known value is cached so the
+// join form doesn't flash the username field before /api/config answers.
+const guestOnlyMode = ref(localStorage.getItem('guestOnlyMode') === 'true')
+const quizTitle = ref('') // The quiz being played, from the server when joining a room
+
+// A player who has already joined a room (still in progress) can't change their display name for it.
+// The server tells us what name they have there; the join form fills it in and locks the field.
+const lockedDisplayName = ref('')
+let nameBeforeLock = ''
+let urlRoomPending = null // a ?room= link waiting to hear whether this device already joined that room
+
+// Refresh: if this device was in a room a moment ago the page rejoins it automatically. Decide that
+// NOW, before the first render, so the player sees "Reconnecting..." instead of the landing page
+// flashing by. A link to a different room (QR code) is not a reconnect.
+const REJOIN_WINDOW_MINUTES = 5
+const RECONNECT_GIVE_UP_MS = 12000
+const initialRejoin = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('trivia_last_room') || 'null')
+    if (!saved || !((Date.now() - saved.timestamp) / 60000 < REJOIN_WINDOW_MINUTES)) return null
+    const urlRoom = route.query.room ? String(route.query.room).toUpperCase() : null
+    if (urlRoom && urlRoom !== String(saved.roomCode).toUpperCase()) return null
+    return saved
+  } catch {
+    return null
+  }
+})()
+const reconnecting = ref(!!initialRejoin)
+const reconnectingRoomCode = ref(initialRejoin ? String(initialRejoin.roomCode) : '')
+
+// The player gave up waiting: show the landing page and forget the saved room
+const cancelReconnect = () => {
+  reconnecting.value = false
+  localStorage.removeItem('trivia_last_room')
+}
 
 // Form inputs
 const usernameInput = ref('')
@@ -543,6 +625,8 @@ const setupSocketListeners = () => {
   socket.on('connect', () => {
     isConnected.value = true
     console.log('[CONNECTION] Socket connected')
+    // Ask whether the room typed in (or linked to) was already joined; the request is dropped while offline
+    if (!inRoom.value && roomCodeInput.value.trim()) requestRoomIdentity(roomCodeInput.value)
     debugLog('Socket CONNECT handler fired (PlayerPage)', {
       inRoom: inRoom.value,
       currentRoomCode: currentRoomCode.value,
@@ -624,12 +708,7 @@ const setupSocketListeners = () => {
     }
   })
 
-  socket.on('playerListUpdate', ({ roomCode, players, revealedCount: rc, totalQuestions: tq }) => {
-    // Update question progress counter if provided
-    if (tq !== undefined) {
-      revealedCount.value = rc || 0
-      totalQuestions.value = tq
-    }
+  socket.on('playerListUpdate', ({ roomCode, players }) => {
     console.log(`[CONNECTION] playerListUpdate received - roomCode: ${roomCode}, currentRoomCode: ${currentRoomCode.value}, joinInProgress: ${joinRoomInProgress.value}, inRoom: ${inRoom.value}`)
     debugLog('playerListUpdate received', {
       roomCode,
@@ -747,12 +826,7 @@ const setupSocketListeners = () => {
     }
   })
 
-  socket.on('questionRevealed', ({ questionIndex, question, results, answerDisplayTime, revealedCount: rc, totalQuestions: tq }) => {
-    // Update question progress counter
-    if (tq !== undefined) {
-      revealedCount.value = rc || 0
-      totalQuestions.value = tq
-    }
+  socket.on('questionRevealed', ({ questionIndex, question, results, answerDisplayTime }) => {
     // CRITICAL: Clear any existing answer display timeout before setting new one
     if (answerDisplayTimeout.value) {
       clearTimeout(answerDisplayTimeout.value)
@@ -798,6 +872,11 @@ const setupSocketListeners = () => {
   })
 
   socket.on('roomError', (msg) => {
+    // A rejected rejoin (room closed, name taken...) falls back to the landing page
+    reconnecting.value = false
+    // ...and the player can try again straight away: the double-tap guard on joins must not
+    // swallow their retry (e.g. a different name right after "already taken")
+    lastJoinRoomAttempt.value = 0
     // CRITICAL: Clear joinRoomInProgress flag on error - server rejected the join attempt
     if (joinRoomInProgress.value) {
       console.log('[CONNECTION] Clearing joinRoom flag due to room error')
@@ -852,6 +931,27 @@ const setupSocketListeners = () => {
     }
   })
 
+  socket.on('roomInfo', (info) => {
+    quizTitle.value = info?.quizTitle || ''
+    // The server knows the player by this name in this room (it may differ from what they typed)
+    if (info?.displayName) {
+      currentDisplayName.value = info.displayName
+      localStorage.setItem('playerDisplayName', info.displayName)
+    }
+  })
+
+  socket.on('roomIdentity', ({ roomCode, displayName }) => {
+    if (inRoom.value || String(roomCode) !== roomCodeInput.value.trim()) return // stale answer
+
+    applyRoomIdentity(displayName)
+
+    if (urlRoomPending === String(roomCode)) {
+      urlRoomPending = null
+      // A link to a room this device already joined: straight back in, no name prompt
+      if (displayName) quickJoinRoom(String(roomCode), displayName)
+    }
+  })
+
   socket.on('activeRoomsUpdate', (rooms) => {
     activeRoomCodes.value = Array.isArray(rooms) ? rooms.map(r => r.roomCode) : []
     // Load recent rooms after receiving active rooms list
@@ -893,8 +993,8 @@ const setupSocketListeners = () => {
     quizCompleted.value = true
     questionDisplaying.value = false
 
-    // If results are coming, show a countdown
-    if (data.showResults) {
+    // If results are coming, show a countdown (not when rejoining an already-completed quiz)
+    if (data.showResults && !data.restored) {
       resultsCountdown.value = 5
       if (countdownInterval) clearInterval(countdownInterval)
       countdownInterval = setInterval(() => {
@@ -918,10 +1018,115 @@ const setupSocketListeners = () => {
       }
     }
   })
+
+  // v5.16.0: rounds (roundState / roundStarted / roundProgress / roundEnded / roundSubmitted)
+  rounds.attach()
 }
+
+// What the Progress modal lists. A round quiz has no per-question history, so build it from the
+// rounds already finished, plus the open round's questions marked "in progress" (their answers
+// stay hidden until the round ends).
+const progressItems = computed(() => {
+  if (!roundsEnabled.value) return questionHistory.value
+
+  const items = []
+  for (const round of roundHistory.value) {
+    round.questions.forEach((q, k) => {
+      items.push({
+        index: q.index,
+        text: q.text,
+        type: q.type,
+        choices: q.choices,
+        acceptedAnswers: q.acceptedAnswers,
+        imageUrl: q.imageUrl,
+        playerChoice: round.answers[k],
+        correctChoice: q.correctChoice,
+        presented: true,
+        revealed: true,
+        isCorrect: round.results[k] === true,
+        roundIndex: round.roundIndex,
+        roundTitle: round.title
+      })
+    })
+  }
+  if (roundPhase.value === 'open' && roundCurrent.value) {
+    const open = roundCurrent.value
+    for (const q of open.questions) {
+      items.push({
+        index: q.index,
+        text: q.text,
+        type: q.type,
+        choices: q.choices,
+        imageUrl: q.imageUrl,
+        playerChoice: null,
+        presented: true,
+        revealed: false,
+        isCorrect: false,
+        inProgress: true,
+        roundIndex: open.roundIndex,
+        roundTitle: open.title
+      })
+    }
+  }
+  return items
+})
+
+// Rounds: send this player's in-progress answers / submit the round
+const saveRoundDraft = (answers) => {
+  socket.emit('saveRoundDraft', {
+    roomCode: currentRoomCode.value,
+    roundIndex: roundCurrent.value?.roundIndex,
+    answers
+  })
+}
+
+const submitRound = (answers) => {
+  socket.emit('submitRound', {
+    roomCode: currentRoomCode.value,
+    roundIndex: roundCurrent.value?.roundIndex,
+    answers
+  })
+}
+
+// The server accepted a round submit: confirm with a toast. (A submit made by the timer running out
+// gets none: the round is ending and the results screen follows.)
+const onRoundSubmitAccepted = ({ firstSubmit, auto }) => {
+  if (auto) return
+  if (firstSubmit) {
+    uiStore.addNotification('Answers submitted! You can still change them and submit updated answers until the round ends.', 'success', 6000)
+  } else {
+    uiStore.addNotification('Updated answers submitted.', 'success', 3000)
+  }
+}
+
+// Rejoined: the "Reconnecting..." screen has done its job
+watch(inRoom, (joined) => {
+  if (joined) reconnecting.value = false
+})
+
+watch(roundPhase, (phase) => {
+  if (phase === 'open' && roundCurrent.value) {
+    statusMessage.value = `Round ${roundCurrent.value.roundIndex + 1} in progress`
+    statusMessageType.value = 'info'
+  } else if (phase === 'ended') {
+    statusMessage.value = 'Round complete'
+    statusMessageType.value = 'success'
+  }
+})
 
 // Initialize page
 onMounted(() => {
+  loadServerConfig()
+
+  // Don't sit on "Reconnecting..." forever if the server can't be reached
+  if (reconnecting.value) {
+    setTimeout(() => {
+      if (reconnecting.value && !inRoom.value) {
+        reconnecting.value = false
+        uiStore.addNotification(`Couldn't reconnect to room ${reconnectingRoomCode.value}.`, 'warning', 5000)
+      }
+    }, RECONNECT_GIVE_UP_MS)
+  }
   debugLog('PlayerPage onMounted', {
     savedUsername: savedUsername.value,
     timestamp: new Date().toISOString()
@@ -996,7 +1201,12 @@ onMounted(() => {
         sessionTimestamp: new Date(timestamp).toISOString()
       })
 
-      if (ageMinutes < 5) {
+      // A link to a DIFFERENT room (QR code) must not drag the player back into their previous one
+      const urlRoom = route.query.room ? String(route.query.room).toUpperCase() : null
+      if (urlRoom && urlRoom !== String(roomCode).toUpperCase()) {
+        console.log(`[CONNECTION] Opened a link to room ${urlRoom} - discarding saved session for room ${roomCode}`)
+        localStorage.removeItem('trivia_last_room')
+      } else if (ageMinutes < 5) {
         console.log(`[CONNECTION] Found recent session (${ageMinutes.toFixed(1)} min old) - attempting auto-rejoin to room ${roomCode} as ${username}/${displayName}`)
         debugLog('Session is recent - will attempt auto-rejoin', {
           roomCode,
@@ -1012,6 +1222,11 @@ onMounted(() => {
 
         // Wait for socket to connect, then rejoin
         const autoRejoinInterval = setInterval(() => {
+          // The player cancelled (or we gave up): don't rejoin behind their back
+          if (!reconnecting.value) {
+            clearInterval(autoRejoinInterval)
+            return
+          }
           debugLog('Auto-rejoin interval tick', {
             socketConnected: socket.isConnected.value,
             timestamp: new Date().toISOString()
@@ -1059,19 +1274,19 @@ onMounted(() => {
     }
   }, 3000)
 
-  // Check for room code in URL query parameter (from QR code)
+  // Check for room code in URL query parameter (from QR code). This only fills in the room code:
+  // a new room never joins automatically, and the display name starts blank so the player picks
+  // the name they want for THIS room (not whatever they used in the last one).
   const roomFromUrl = route.query.room
   if (roomFromUrl) {
     roomCodeInput.value = roomFromUrl.toUpperCase()
+    displayNameInput.value = ''
     console.log(`Room code from URL: ${roomCodeInput.value}`)
 
-    // Auto-join if user has credentials
-    if (savedUsername.value && savedDisplayName.value) {
-      // Wait a bit for socket to connect
-      setTimeout(() => {
-        quickJoinRoom(roomCodeInput.value)
-      }, 500)
-    }
+    // If this device has already joined that room (still in progress) the server says so and the
+    // player is let straight back in under their existing name; otherwise they type a name
+    urlRoomPending = roomCodeInput.value
+    requestRoomIdentity(roomCodeInput.value)
   }
 
   document.addEventListener('click', closeMenuIfOutside)
@@ -1139,9 +1354,25 @@ const saveRecentRoom = (roomCode) => {
   localStorage.setItem('playerRecentRooms', JSON.stringify(rooms))
 }
 
-const quickJoinRoom = async (roomCode) => {
-  // Get display name from saved value or input field
-  const displayName = savedDisplayName.value || displayNameInput.value.trim()
+const quickJoinRoom = async (roomCode, knownDisplayName = '') => {
+  // The name this room already knows the player by, else the last one they used, else what is typed
+  const rememberedForRoom = recentRooms.value.find(r => r.code === roomCode)?.displayName
+  const displayName = knownDisplayName || rememberedForRoom || savedDisplayName.value || displayNameInput.value.trim()
+
+  // Guest-only mode: no account needed, just the display name
+  if (guestOnlyMode.value) {
+    if (!displayName) {
+      uiStore.addNotification('Please enter your display name first.', 'warning')
+      return
+    }
+    const username = anonymousUsername()
+    roomCodeInput.value = roomCode
+    currentUsername.value = username
+    currentDisplayName.value = displayName
+    currentRoomCode.value = roomCode
+    emitJoinRoom(roomCode, username, displayName, 'guest-only quick join')
+    return
+  }
 
   if (!savedUsername.value) {
     uiStore.addNotification('Please enter your username first.', 'warning')
@@ -1316,8 +1547,54 @@ const emitJoinRoom = (roomCode, username, displayName, source = '') => {
   return true
 }
 
+// Guest-only mode: players give just a display name. The username sent to the server is derived
+// from this device's PlayerID (the server derives and enforces the same value), so it never
+// touches a saved account.
+const anonymousUsername = () => `guest_${String(socket.getPlayerID()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)}`
+
+const loadServerConfig = async () => {
+  try {
+    const { data } = await get('/api/config')
+    guestOnlyMode.value = data.guestOnly === true
+    localStorage.setItem('guestOnlyMode', String(guestOnlyMode.value))
+  } catch (err) {
+    console.warn('[CONFIG] Could not load server config; using the last known setting', err.message)
+  }
+}
+
+// Ask the server whether this device/account has already joined the room, and under what name
+const requestRoomIdentity = (roomCode) => {
+  const code = String(roomCode || '').trim()
+  if (!code) return
+  socket.emit('lookupRoomIdentity', { roomCode: code, username: savedUsername.value || usernameInput.value.trim() || undefined })
+}
+
+// Fill in and lock the display name for a room already joined; unlock it (restoring what was typed) otherwise
+const applyRoomIdentity = (displayName) => {
+  if (displayName) {
+    if (!lockedDisplayName.value) nameBeforeLock = displayNameInput.value
+    lockedDisplayName.value = displayName
+    displayNameInput.value = displayName
+  } else if (lockedDisplayName.value) {
+    lockedDisplayName.value = ''
+    displayNameInput.value = nameBeforeLock
+  }
+}
+
+// Typing a room code: check (after a short pause) whether it's a room this player is already in
+let identityLookupTimer = null
+watch(roomCodeInput, (code) => {
+  clearTimeout(identityLookupTimer)
+  if (!code.trim()) {
+    applyRoomIdentity(null)
+    return
+  }
+  identityLookupTimer = setTimeout(() => requestRoomIdentity(code), 250)
+})
+
 const handleJoinRoom = async () => {
-  const username = savedUsername.value || usernameInput.value.trim()
+  const guestRoom = guestOnlyMode.value
+  const username = guestRoom ? anonymousUsername() : (savedUsername.value || usernameInput.value.trim())
   const displayName = displayNameInput.value.trim()
   const roomCode = roomCodeInput.value.trim()
 
@@ -1342,6 +1619,16 @@ const handleJoinRoom = async () => {
 
   if (!roomCode) {
     uiStore.addNotification('Please enter a room code.', 'warning')
+    return
+  }
+
+  if (guestRoom) {
+    // No account check or login: remember only the display name, and leave any saved account alone
+    localStorage.setItem('playerDisplayName', displayName)
+    currentUsername.value = username
+    currentDisplayName.value = displayName
+    currentRoomCode.value = roomCode
+    emitJoinRoom(roomCode, username, displayName, 'guest-only join')
     return
   }
 
@@ -1503,6 +1790,10 @@ const confirmLeaveRoom = () => {
 }
 
 const handleLeaveRoom = () => {
+  // They left on purpose: a refresh must not put them back in this room
+  localStorage.removeItem('trivia_last_room')
+  lockedDisplayName.value = ''
+
   // Reset local state
   inRoom.value = false
   currentRoomCode.value = null
@@ -1517,8 +1808,8 @@ const handleLeaveRoom = () => {
   quizCompleted.value = false
   resultsCountdown.value = 0
   if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null }
-  revealedCount.value = 0
-  totalQuestions.value = 0
+  rounds.reset()
+  quizTitle.value = ''
   autoMode.value = false
   timerStartedAt.value = null
   timerDuration.value = null

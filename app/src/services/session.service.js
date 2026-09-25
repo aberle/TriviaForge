@@ -68,6 +68,26 @@ class SessionService {
 
       const sessionId = sessionResult.rows[0].id;
 
+      // 1b. Snapshot the rounds (v5.16.0). Session history can't join the live quiz_rounds
+      // table because editing a quiz recreates its question rows, so keep a per-session copy.
+      const rounds = room.quizData.rounds || [];
+      const roundOrderByQuestion = new Map(); // question index -> 1-based round order
+      for (const round of rounds) {
+        await client.query(
+          `
+          INSERT INTO session_rounds (game_session_id, round_order, title, time_limit_seconds)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (game_session_id, round_order) DO UPDATE SET
+            title = EXCLUDED.title,
+            time_limit_seconds = EXCLUDED.time_limit_seconds
+        `,
+          [sessionId, round.index + 1, round.title, round.timeLimitSeconds]
+        );
+        for (const idx of round.questionIndexes) {
+          roundOrderByQuestion.set(idx, round.index + 1);
+        }
+      }
+
       // 2. Insert or update session_questions (track presented/revealed status)
       const presentedSet = new Set(room.presentedQuestions || []);
       const revealedSet = new Set(room.revealedQuestions || []);
@@ -81,15 +101,16 @@ class SessionService {
           `
           INSERT INTO session_questions (
             game_session_id, question_id, presentation_order,
-            is_presented, is_revealed
+            is_presented, is_revealed, round_order
           )
-          VALUES ($1, $2, $3, $4, $5)
+          VALUES ($1, $2, $3, $4, $5, $6)
           ON CONFLICT (game_session_id, question_id) DO UPDATE SET
             presentation_order = EXCLUDED.presentation_order,
             is_presented = EXCLUDED.is_presented,
-            is_revealed = EXCLUDED.is_revealed
+            is_revealed = EXCLUDED.is_revealed,
+            round_order = EXCLUDED.round_order
         `,
-          [sessionId, question.id, i, isPresented, isRevealed]
+          [sessionId, question.id, i, isPresented, isRevealed, roundOrderByQuestion.get(i) ?? null]
         );
       }
 

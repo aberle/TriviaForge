@@ -1,8 +1,8 @@
 # TriviaForge - Active Development Tasks (2026)
 
 > **Purpose:** Current development priorities and pending tasks
-> **Last Updated:** 2026-07-20
-> **Version:** v5.15.0
+> **Last Updated:** 2026-09-21
+> **Version:** v5.16.0
 
 ---
 
@@ -32,6 +32,49 @@
 ---
 
 ## 🚀 Current Priorities (Active Development)
+
+### v5.16.0 Features - Multiple Rounds ✅ COMPLETE
+
+**Status:** ✅ COMPLETE
+**Priority:** HIGH
+**Completed:** 2026-09-21
+**Design notes:** [docs/rounds.md](docs/rounds.md)
+
+#### Data & Authoring ✅
+- [x] `quiz_rounds` table and `quiz_questions.round_id`; per-session snapshot in `session_rounds` and `session_questions.round_order`
+- [x] Quiz create/update/read carry `rounds` and each question's `roundIndex` (validated by `validateRounds`)
+- [x] Admin editor: round headers (title, time limit), round selector, per-round reordering and shuffling, cross-round drag-and-drop
+
+#### Live Play ✅
+- [x] `startRound` / `endRound` / `saveRoundDraft` / `submitRound` events, `roundState` snapshots for reconnects, presenter-only round controls
+- [x] Timed rounds end on a server timer (with a short latency grace); untimed rounds are ended by the presenter
+- [x] No answer leaks while a round is open (drafts live outside `player.answers`; questions are sanitized)
+- [x] Between-round leaderboard on players, presenter and display; round review with the player's own results
+- [x] Auto-pilot is disabled for round quizzes
+
+#### Data Out ✅
+- [x] JSON export/import round-trips rounds; CSV gets a Round column; PDF and session breakdown show the round
+
+**Files Created:**
+- `app/init/19-quiz-rounds.sql`, `app/src/services/round.service.js`, `app/src/utils/grading.js`
+- `app/src/composables/useRounds.js`, `app/src/components/rounds/*`, `app/src/components/presenter/RoundDisplay.vue`
+- `app/testing/rounds-test.js`, `docs/rounds.md`
+
+**Files Modified:**
+- `app/server.js` - Round handlers, presenter guards, snapshots on join/view/resume, final-results grading fix
+- `app/src/controllers/quiz.controller.js`, `app/src/services/quiz.service.js`, `app/src/controllers/export.controller.js` - Rounds in the quiz API and JSON import/export
+- `app/src/services/session.service.js`, `app/src/controllers/session.controller.js`, `app/src/services/export.service.js`, `app/src/services/pdfExport.service.js` - Round persistence and history
+- `app/src/pages/AdminPage.vue`, `PlayerPage.vue`, `PresenterPage.vue`, `DisplayPage.vue` and related components
+- `app/src/config/version.js` - Version bump to v5.16.0
+
+**Known gaps / follow-ups:**
+- Solo play ignores rounds; Excel import and "create quiz from selection" produce quizzes without rounds
+- The player Progress modal doesn't list round questions until the player rejoins (it also predates short-answer support)
+- Open-round drafts are not persisted across a server restart; a resumed session starts between rounds
+- The presenter's Standings modal groups nothing by round
+- The admin round UI has only been checked through the API and server-side rendering, not clicked through in a browser
+
+---
 
 ### v5.15.0 Features - Open-Ended (Short Answer) Questions ✅ COMPLETE
 
@@ -823,6 +866,7 @@ Add notification to presenter when all connected players have answered the curre
 ### Question Types & Media
 - [x] True/False question type - v5.0.0 ✅
 - [x] Open-Ended (Short Answer) question type with fuzzy-match auto-grading - v5.15.0 ✅
+- [x] Multiple rounds with timed/untimed rounds and between-round leaderboards - v5.16.0 ✅
 - [x] Question images (upload + URL reference) - v5.0.0 ✅
 - [ ] Video/audio media support (future consideration)
 
@@ -908,5 +952,5 @@ Before marking a task as complete:
 
 **Archive:** See [archive/TODO-2025.md](archive/TODO-2025.md) for historical tasks and completed features from 2025.
 
-**Last Updated:** 2026-07-20 (v5.15.0)
+**Last Updated:** 2026-09-21 (v5.16.0)
 **Maintained By:** TriviaForge Development Team

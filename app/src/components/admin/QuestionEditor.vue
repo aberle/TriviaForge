@@ -18,6 +18,19 @@
       </select>
     </div>
 
+    <div v-if="rounds.length > 0" class="question-type-wrapper">
+      <label for="questionRound">Round:</label>
+      <select
+        :value="roundIndex"
+        @change="$emit('update:roundIndex', Number($event.target.value))"
+        id="questionRound"
+      >
+        <option v-for="(round, idx) in rounds" :key="idx" :value="idx">
+          {{ round.title || `Round ${idx + 1}` }}
+        </option>
+      </select>
+    </div>
+
     <textarea
       :value="questionText"
       @input="$emit('update:questionText', $event.target.value)"
@@ -169,6 +182,8 @@ const props = defineProps({
   questionType: { type: String, default: 'multiple_choice' },
   imageUrl: { type: String, default: null },
   imageType: { type: String, default: null },
+  rounds: { type: Array, default: () => [] },
+  roundIndex: { type: Number, default: 0 },
   editingQuestionIdx: { type: [Number, null], default: null },
   draggedChoiceIdx: { type: [Number, null], default: null },
   dragOverChoiceIdx: { type: [Number, null], default: null }
@@ -180,6 +195,7 @@ const emit = defineEmits([
   'update:questionType',
   'update:imageUrl',
   'update:imageType',
+  'update:roundIndex',
   'updateChoice',
   'addChoice',
   'removeChoice',

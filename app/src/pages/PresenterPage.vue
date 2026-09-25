@@ -29,8 +29,27 @@
         @closeRoom="closeRoom"
       />
 
-      <!-- Middle Column: Quiz Display -->
+      <!-- Middle Column: Round controls (quizzes with rounds) or the question list -->
+      <RoundDisplay
+        v-if="roundMode"
+        :quizTitle="currentQuizTitle"
+        :currentRoomCode="currentRoomCode"
+        :rounds="roundList"
+        :questions="currentQuestions"
+        :phase="roundPhase"
+        :completed="roundCompleted"
+        :allCompleted="roundsAllCompleted"
+        :nextRoundIndex="roundNext"
+        :current="roundCurrent"
+        :progress="roundProgress"
+        :lastEnded="roundLastEnded"
+        :quizCompleted="quizCompleted"
+        @startRound="startRound"
+        @endRound="endRound"
+        @completeQuiz="completeQuiz"
+      />
       <QuizDisplay
+        v-else
         :currentQuizTitle="currentQuizTitle"
         :currentQuestions="currentQuestions"
         :currentQuestionIndex="currentQuestionIndex"
@@ -69,6 +88,7 @@
       <ConnectedPlayersList
         :nonSpectatorPlayers="nonSpectatorPlayers"
         :currentRoomCode="currentRoomCode"
+        :submittedNames="roundPhase === 'open' ? (roundProgress?.submittedNames || []) : []"
         @showPresenterProgress="showPresenterProgress"
         @kickPlayer="kickPlayer"
         @banDisplayName="banDisplayName"
@@ -189,17 +209,29 @@ import FormInput from '@/components/common/FormInput.vue'
 import PresenterNavbar from '@/components/presenter/PresenterNavbar.vue'
 import PresenterSidebar from '@/components/presenter/PresenterSidebar.vue'
 import QuizDisplay from '@/components/presenter/QuizDisplay.vue'
+import RoundDisplay from '@/components/presenter/RoundDisplay.vue'
 import ConnectedPlayersList from '@/components/presenter/ConnectedPlayersList.vue'
 import QRCodeModal from '@/components/presenter/QRCodeModal.vue'
 import LiveStandingsModal from '@/components/presenter/LiveStandingsModal.vue'
 import AnswerRevealModal from '@/components/presenter/AnswerRevealModal.vue'
 import { useSocket } from '@/composables/useSocket.js'
+import { useRounds } from '@/composables/useRounds.js'
 import { useApi } from '@/composables/useApi.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useTheme } from '@/composables/useTheme.js'
 
 const router = useRouter()
 const socket = useSocket()
+const rounds = useRounds(socket)
+const {
+  phase: roundPhase,
+  completed: roundCompleted,
+  allCompleted: roundsAllCompleted,
+  nextRoundIndex: roundNext,
+  current: roundCurrent,
+  progress: roundProgress,
+  lastEnded: roundLastEnded
+} = rounds
 const { post, get } = useApi()
 const authStore = useAuthStore()
 
@@ -241,6 +273,12 @@ const currentQuestionIndex = ref(-1)
 const presentedQuestionIndex = ref(null)
 const presentedQuestions = ref([])
 const revealedQuestions = ref([])
+
+// Rounds (v5.16.0): quizzes split into rounds are played a round at a time
+const roundsConfig = ref([]) // [{ index, title, timeLimitSeconds, questionIndexes }] from the server; empty = no rounds
+const quizCompleted = ref(false)
+const roundMode = computed(() => roundsConfig.value.length > 0)
+const roundList = computed(() => roundsConfig.value.map(r => ({ ...r, questionCount: r.questionIndexes.length })))
 
 // Session state
 const selectedSessionFilename = ref('')
@@ -507,6 +545,26 @@ const resumeAutoMode = () => {
   socket.emit('resumeAutoMode', { roomCode: currentRoomCode.value })
 }
 
+// Rounds (v5.16.0)
+const startRound = (roundIndex) => {
+  if (!currentRoomCode.value) return
+  socket.emit('startRound', { roomCode: currentRoomCode.value, roundIndex })
+}
+
+const endRound = async () => {
+  if (!currentRoomCode.value) return
+  const progress = roundProgress.value
+  const waiting = progress ? progress.total - progress.submitted : 0
+  if (waiting > 0) {
+    const confirmed = await showConfirm(
+      `${waiting} player${waiting === 1 ? ' has' : 's have'} not submitted yet. Whatever they have answered so far will be submitted for them.\n\nEnd the round now?`,
+      'End Round'
+    )
+    if (!confirmed) return
+  }
+  socket.emit('endRound', { roomCode: currentRoomCode.value, roundIndex: roundCurrent.value?.roundIndex })
+}
+
 // Complete quiz
 const completeQuiz = async () => {
   if (!currentRoomCode.value) {
@@ -652,6 +710,9 @@ const resetRoom = () => {
   connectedPlayers.value = []
   autoMode.value = false
   autoModeState.value = 'idle'
+  rounds.reset()
+  roundsConfig.value = []
+  quizCompleted.value = false
   resetAllAnsweredState()
 }
 
@@ -805,15 +866,22 @@ const saveAccountSettings = async () => {
 const setupSocketListeners = () => {
   const socketInstance = socket.connect()
 
+  // v5.16.0: round events (roundState / roundStarted / roundProgress / roundEnded)
+  rounds.attach()
+
   // Handle socket connection
   socketInstance.on('connect', () => {
     console.log('[PRESENTER] Socket connected')
     // Presenter manages multiple rooms from a list - they'll click to view the room they want
   })
 
-  socketInstance.on('roomCreated', ({ roomCode, quizFilename, quizTitle, questions, currentQuestionIndex: serverCurrentQuestionIndex, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, isResumed, originalRoomCode, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
+  socketInstance.on('roomCreated', ({ roomCode, quizFilename, quizTitle, questions, rounds: serverRounds, quizCompleted: serverQuizCompleted, currentQuestionIndex: serverCurrentQuestionIndex, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, isResumed, originalRoomCode, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
     currentRoomCode.value = roomCode
     currentQuizFilename.value = quizFilename // Store for reconnection
+    // A different room may have left round state behind; the server re-sends this room's next
+    rounds.reset()
+    roundsConfig.value = serverRounds || []
+    quizCompleted.value = serverQuizCompleted === true
     currentQuestions.value = questions || []
     presentedQuestions.value = serverPresentedQuestions || []
     revealedQuestions.value = serverRevealedQuestions || []
@@ -870,8 +938,11 @@ const setupSocketListeners = () => {
     }
   })
 
-  socketInstance.on('roomRestored', ({ roomCode, quizTitle, questions, currentQuestionIndex: serverCurrentQuestionIndex, players, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
+  socketInstance.on('roomRestored', ({ roomCode, quizTitle, questions, rounds: serverRounds, quizCompleted: serverQuizCompleted, currentQuestionIndex: serverCurrentQuestionIndex, players, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
     if (roomCode !== currentRoomCode.value) return
+    rounds.reset()
+    roundsConfig.value = serverRounds || []
+    quizCompleted.value = serverQuizCompleted === true
     currentQuestions.value = questions || []
     presentedQuestions.value = serverPresentedQuestions || []
     revealedQuestions.value = serverRevealedQuestions || []
@@ -996,6 +1067,7 @@ const setupSocketListeners = () => {
   })
 
   socketInstance.on('quizCompleted', ({ message, filename }) => {
+    quizCompleted.value = true
     showAlert(message, 'Quiz Completed')
     loadIncompleteSessions()
   })

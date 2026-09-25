@@ -4,6 +4,17 @@ Completed feature history and planned future work. For active/in-progress develo
 
 ## Completed Features
 
+**v5.16.0 (Sep 2026) - Multiple Rounds**
+- [x] Quizzes can be split into rounds with any number of questions each; rounds are optional, so existing quizzes play exactly as before
+- [x] Admin editor: round headers with a title and optional time limit, a round selector on each question, reordering within a round, and drag-and-drop between rounds
+- [x] Live play: players see every question of a round at once, answer at their own pace, and submit the round; in-progress answers are saved to the server so reconnects and timer expiry never lose them
+- [x] Rounds are timed (they end on their own, auto-submitting what players have) or untimed (the presenter ends them, with a live "submitted X of N" view)
+- [x] Correct answers are revealed only after a round ends and are never sent to players while it is open
+- [x] Leaderboard shown between rounds to everyone in the room: players' devices, the presenter and the display page
+- [x] Rounds survive session resume, JSON library export/import, session history (per-round headings), CSV (Round column) and PDF exports
+- [x] Fixed final-results scoring, which never counted correct short-answer questions, and resume, which lost typed short-answer text
+- [x] Socket.IO integration test for the round flow (`npm run test:rounds`)
+
 **v5.15.0 (Jul 2026) - Open-Ended (Short Answer) Questions**
 - [x] New `short_answer` question type — players type a free-text answer instead of picking from choices
 - [x] Automatic grading via fuzzy string matching (Levenshtein-based similarity) against admin-supplied accepted answers/synonyms

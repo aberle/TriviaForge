@@ -10,6 +10,7 @@ testing/
 ├── TESTING.md                   # Complete testing guide and documentation
 ├── test-runner.js              # Main automated test runner
 ├── stress-test.config.js       # Stress test scenario configurations
+├── rounds-test.js              # Socket.IO integration test for quizzes with rounds
 └── logs/                       # Test execution logs (future)
 ```
 

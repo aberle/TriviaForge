@@ -3,14 +3,12 @@
     <!-- Brand -->
     <div class="navbar-brand">
       <AppIcon name="users" size="sm" class="brand-icon" />
-      TriviaForge Player
+      <!-- In a room the bar shows the quiz's name; otherwise the app's -->
+      <span class="brand-title" :title="brandTitle">{{ brandTitle }}</span>
     </div>
 
-    <!-- Center: progress button and question counter -->
+    <!-- Center: progress button -->
     <div class="nav-progress-container">
-      <span v-if="inRoom && totalQuestions > 0" class="question-counter">
-        {{ revealedCount }} / {{ totalQuestions }}
-      </span>
       <button v-if="inRoom" id="progressBtn" class="progress-btn" @click="$emit('showProgress')">
         <AppIcon name="bar-chart-3" size="sm" /> <span class="progress-btn-label">Progress</span>
       </button>
@@ -110,6 +108,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import ThemeSelector from './ThemeSelector.vue';
 import AppIcon from '@/components/common/AppIcon.vue';
@@ -118,7 +117,7 @@ import { useAuthStore } from '@/stores/auth.js';
 const route = useRoute();
 const authStore = useAuthStore();
 
-defineProps({
+const props = defineProps({
   inRoom: { type: Boolean, required: true },
   currentRoomCode: { type: String, default: null },
   connectionStateClass: { type: String, required: true },
@@ -126,33 +125,45 @@ defineProps({
   menuOpen: { type: Boolean, required: true },
   nonSpectatorPlayers: { type: Array, required: true },
   loginUsername: { type: String, default: '' },
-  revealedCount: { type: Number, default: 0 },
-  totalQuestions: { type: Number, default: 0 }
+  // The name of the quiz being played (shown instead of "TriviaForge Player" while in a room)
+  quizTitle: { type: String, default: '' }
 });
+
+const brandTitle = computed(() => (props.inRoom && props.quizTitle ? props.quizTitle : 'TriviaForge Player'));
 
 defineEmits(['showProgress', 'toggleMenu', 'leaveRoom', 'logout']);
 </script>
 
 <style scoped>
-/* Center area: progress button + question counter */
+/* A long quiz name is cut off with an ellipsis instead of pushing the room code and buttons away */
+.navbar-brand {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* On tablets and phones the links are hidden: don't centre the progress button in the leftover
+   space, tuck it next to the room code so the quiz name gets the room */
+@media (max-width: 1024px) {
+  .nav-progress-container {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+}
+
+.brand-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Center area: progress button */
 .nav-progress-container {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 0.75rem;
-}
-
-.question-counter {
-  padding: 0.25rem 0.65rem;
-  background: var(--bg-overlay-10);
-  border: 1px solid var(--border-color);
-  border-radius: 20px;
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .progress-btn {
