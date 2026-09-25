@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { APP_ROOT, suite } from './lib.js';
 
-const { sessionHasAnswers, roomIsWorthSaving } = await import(pathToFileURL(path.join(APP_ROOT, 'src/utils/roomState.js')).href);
+const { sessionHasAnswers, roomIsWorthSaving, shouldSaveOnComplete } = await import(pathToFileURL(path.join(APP_ROOT, 'src/utils/roomState.js')).href);
 const t = suite('rooms worth saving');
 
 const room = (overrides = {}) => ({ players: {}, presentedQuestions: [], currentQuestionIndex: null, ...overrides });
@@ -23,5 +23,10 @@ t.ok('a round quiz between rounds is saved', roomIsWorthSaving(room({ rounds: { 
 t.ok('a round quiz that has not started and has nobody in it is not', !roomIsWorthSaving(room({ rounds: { phase: 'idle' } })));
 t.ok('a room with a recorded answer is saved', roomIsWorthSaving(room({ players: { a: player({ answers: { 0: 1 } }) } })));
 t.ok('sessionHasAnswers still only counts recorded answers', !sessionHasAnswers(room({ players: { a: player() } })) && sessionHasAnswers(room({ players: { a: player({ answers: { 0: 1 } }) } })));
+
+// Completing a quiz
+t.ok('completing a room with answers saves it', shouldSaveOnComplete(room({ players: { a: player({ answers: { 0: 1 } }) } }), false));
+t.ok('completing a brand new room nobody answered in does not save anything', !shouldSaveOnComplete(room({ players: { a: player() } }), false));
+t.ok('completing a session that is already in the database saves it even without answers (so it leaves the in-progress list)', shouldSaveOnComplete(room({ players: { a: player() } }), true));
 
 process.exit(t.finish() ? 0 : 1);

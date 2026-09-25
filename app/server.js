@@ -35,7 +35,7 @@ import { env } from './src/config/environment.js';
 // Import services (Phase 3: Service Layer)
 import { roomService } from './src/services/room.service.js';
 import { sessionService } from './src/services/session.service.js';
-import { sessionHasAnswers, roomIsWorthSaving } from './src/utils/roomState.js';
+import { sessionHasAnswers, roomIsWorthSaving, shouldSaveOnComplete } from './src/utils/roomState.js';
 import { quizService } from './src/services/quiz.service.js';
 import { autoModeService } from './src/services/autoMode.service.js';
 import { initializeAdminPassword } from './src/services/startup.service.js';
@@ -2967,9 +2967,16 @@ io.on('connection', (socket) => {
     // Stop periodic auto-save (quiz is done)
     stopAutoSave(roomCode);
 
-    // Save session if there are answers
+    // Save the session if there are answers, or if it is already in the database (a resumed session
+    // must be saved as completed, or it would stay in the in-progress list)
     let savedFilename = null;
-    if (sessionHasAnswers(room)) {
+    let alreadySaved = false;
+    try {
+      alreadySaved = await sessionService.isRoomCodeSaved(roomCode);
+    } catch (err) {
+      console.error('Error checking for a saved session:', err);
+    }
+    if (shouldSaveOnComplete(room, alreadySaved)) {
       try {
         savedFilename = await saveSession(roomCode, room);
         console.log(`Session saved: ${savedFilename}`);

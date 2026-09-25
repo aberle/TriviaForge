@@ -22,3 +22,14 @@ export const roomIsWorthSaving = (room) => {
   if (room.rounds && room.rounds.phase !== 'idle') return true;
   return Object.values(room.players).some(player => !player.isSpectator);
 };
+
+/**
+ * Whether completing a quiz should save the session. Any recorded answer is worth saving, and so is a
+ * session that already exists in the database (a resumed one, or one that was auto-saved): it has to
+ * be saved to be marked completed, or it would stay in the list of in-progress sessions forever.
+ *
+ * @param {Object} room - Live room
+ * @param {boolean} alreadySaved - Whether the database already has a session for this room's code
+ * @returns {boolean}
+ */
+export const shouldSaveOnComplete = (room, alreadySaved) => alreadySaved || sessionHasAnswers(room);
