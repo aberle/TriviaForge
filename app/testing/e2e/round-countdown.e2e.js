@@ -33,7 +33,7 @@ await runSuite(
     const room = await presenter.eval(`(([...document.querySelectorAll('*')].find(e => e.children.length < 4 && e.innerText?.includes('TriviaForge Presenter') && /\\d{4}/.test(e.innerText)) || {}).innerText || '').match(/\\d{4}/)?.[0]`);
     const display = await env.open(`${BASE}/display?room=${room}`, { width: 1600, height: 900 });
     await display.waitText('Connected to room');
-    const ann = await env.player('Ann', { room });
+    const ann = await env.player('Ann', { room, height: 480 }); // a short screen, so the round has to be scrolled
     const bob = env.bot();
     bob.emit('joinRoom', { roomCode: room, username: 'bob_cd', displayName: 'Bob', playerID: bob.playerID });
     await presenter.waitText('2 player(s)');
@@ -60,6 +60,13 @@ await runSuite(
     await ann.waitFor(`!!document.querySelector('.timer-bar')`);
     ok('the player now sees a countdown, and no more "No time limit"', (await ann.visible('.timer-bar')) && !(await ann.has('No time limit')));
     await display.waitFor(`!!document.querySelector('.timer-bar')`);
+    ok('the player is told a countdown has started', await ann.has('The presenter started a countdown'));
+    ok('and the timer says the presenter started it', await ann.eval(`document.querySelector('.countdown-label')?.innerText.includes('Countdown')`));
+    ok('and the timer is slim (one short row)', await ann.eval(`document.querySelector('.timer-sticky').getBoundingClientRect().height <= 44`));
+    await ann.eval(`window.scrollTo(0, document.documentElement.scrollHeight); document.querySelectorAll('*').forEach((e) => { if (e.scrollHeight > e.clientHeight + 50 && getComputedStyle(e).overflowY !== 'visible') e.scrollTop = e.scrollHeight; }); true`);
+    await sleep(400);
+    ok('scrolled all the way down, the countdown is still in view', await ann.eval(`(() => { const r = document.querySelector('.timer-sticky').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`));
+    await ann.eval(`window.scrollTo(0, 0); true`);
     ok('the display shows the countdown too', await display.visible('.timer-bar'));
     ok('the presenter can cancel it, and the presets are gone', (await presenter.has('Cancel countdown')) && !(await presenter.has('Auto-end in')));
     const again = bob.mark();

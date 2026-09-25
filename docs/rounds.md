@@ -22,6 +22,7 @@ A quiz can be split into rounds. In a round, players see **every question at onc
 **Playing**
 - Answers are saved to the server as you go, so a dropped connection, a locked phone or a reload keeps them. **Submit Answers** sends them right away (no confirmation) and a toast says they can still be changed. You can keep changing your answers until the round ends: edits only count once you tap **Submit Updated Answers** (the screen warns that you have unsent changes, and your last submission counts until you resubmit). If a timed round runs out with unsent changes, they are submitted automatically.
 - If a player taps Submit with questions left blank, the first tap only warns them: the blank questions are marked "Not answered yet" (and scrolled to), and tapping again sends the answers as they are. A timed round running out never asks; it just submits.
+- The countdown of a timed round (or one you started) stays at the top of the player's screen however far they have scrolled, and a notice appears when you start a countdown.
 - When a timed round runs out, whatever is filled in is submitted automatically.
 - Scoring is one point per correct answer. Players who join mid-round get the remaining time; a round a player missed scores zero for them.
 

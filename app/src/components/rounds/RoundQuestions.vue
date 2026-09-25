@@ -8,14 +8,23 @@
       <div class="round-answered">{{ answeredCount }} / {{ round.questions.length }} answered</div>
     </div>
 
-    <CountdownTimer
-      v-if="round.timeLimitSeconds && round.clientStartedAt"
-      :key="round.roundIndex"
-      :startedAt="round.clientStartedAt"
-      :duration="round.timeLimitSeconds"
-      :active="true"
-      @expired="handleTimerExpired"
-    />
+    <!-- Stays at the top of the screen however far the player has scrolled -->
+    <div v-if="round.timeLimitSeconds && round.clientStartedAt" class="timer-sticky">
+      <span
+        v-if="round.countdown"
+        class="countdown-label"
+        title="The presenter started a countdown: the round ends when it reaches zero"
+      >
+        <AppIcon name="timer" size="sm" /> Countdown
+      </span>
+      <CountdownTimer
+        :key="round.roundIndex"
+        :startedAt="round.clientStartedAt"
+        :duration="round.timeLimitSeconds"
+        :active="true"
+        @expired="handleTimerExpired"
+      />
+    </div>
     <p v-else class="untimed-note">
       <AppIcon name="clock" size="sm" /> No time limit. Submit when you're done; the presenter ends the round.
     </p>
@@ -336,6 +345,50 @@ onUnmounted(() => {
   border-radius: 999px;
   color: var(--info-light);
   font-weight: bold;
+}
+
+.timer-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+}
+
+/* One slim row: (label) bar and seconds side by side */
+.timer-sticky :deep(.countdown-timer) {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.timer-sticky :deep(.timer-bar-container) {
+  flex: 1;
+  height: 14px;
+}
+
+.timer-sticky :deep(.timer-text) {
+  min-width: 3.5rem;
+  text-align: right;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.countdown-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--warning-light);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .untimed-note {

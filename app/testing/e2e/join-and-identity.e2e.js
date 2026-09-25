@@ -133,7 +133,21 @@ await runSuite(
     f = await nameField(qrNew);
     ok('a QR link to a room never joined still asks for a display name (blank, editable)', (await qrNew.visible('.join-section')) && f.value === '' && f.readOnly === false && !(await qrNew.has('Waiting for Question')), JSON.stringify(f));
     ok('...with the room code filled in', (await qrNew.eval(`document.querySelector('#roomCodeManual').value`)) === roomC);
+    const codeField = () => qrNew.eval(`(() => { const e = document.querySelector('#roomCodeManual'); return { readOnly: e.readOnly, focused: document.activeElement === e, hint: /Change room code/.test(document.body.innerText) }; })()`);
+    let cf = await codeField();
+    ok("the room code from a QR link can't be typed over, and a small link offers to change it", cf.readOnly === true && cf.hint === true, JSON.stringify(cf));
+    await qrNew.clickText('Change room code', 'button.link-btn');
+    await sleep(300);
+    cf = await codeField();
+    ok('using the link unlocks the field and puts the cursor in it', cf.readOnly === false && cf.focused === true && cf.hint === false, JSON.stringify(cf));
+    await qrNew.fill('#roomCodeManual', '4321');
+    ok('and a different code can then be typed', (await qrNew.eval(`document.querySelector('#roomCodeManual').value`)) === '4321');
     await qrNew.closeTab();
+
+    const plain = await env.open(`${BASE}/player`, { width: 390, height: 844, mobile: true });
+    await plain.waitFor(`!!document.querySelector('#roomCodeManual')`);
+    ok('opening the player page without a link leaves the room code editable, with no link', await plain.eval(`(() => { const e = document.querySelector('#roomCodeManual'); return e.readOnly === false && !/Change room code/.test(document.body.innerText); })()`));
+    await plain.closeTab();
 
     section('A device that just left a room is not dragged back into it by a link to another room');
     const roomD = await env.newRoom();

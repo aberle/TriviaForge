@@ -136,6 +136,8 @@
           v-model:roomCodeInput="roomCodeInput"
           :guestOnly="guestOnlyMode"
           :displayNameLocked="!!lockedDisplayName"
+          :roomCodeLocked="roomCodeFromLink"
+          @unlockRoomCode="roomCodeFromLink = false"
           @changeUsername="handleChangeUsername"
           @joinRoom="handleJoinRoom"
           @manageAccount="handleManageAccount"
@@ -378,6 +380,8 @@ const cancelReconnect = () => {
 const usernameInput = ref('')
 const displayNameInput = ref('')
 const roomCodeInput = ref('')
+// The room code was filled in from a link (QR code): it can't be typed over, only changed on purpose
+const roomCodeFromLink = ref(false)
 const savedUsername = ref(localStorage.getItem('playerUsername'))
 const savedDisplayName = ref(localStorage.getItem('playerDisplayName'))
 const savedAccountType = ref(localStorage.getItem('playerAccountType'))
@@ -1170,6 +1174,16 @@ watch(inRoom, (joined) => {
   if (joined) reconnecting.value = false
 })
 
+// The presenter starts a countdown on an untimed round: say so, since the player may have scrolled
+// far from anything that changed
+watch(() => roundCurrent.value?.countdown === true, (running, wasRunning) => {
+  if (running && !wasRunning && roundPhase.value === 'open') {
+    const seconds = roundCurrent.value.timeLimitSeconds
+    const label = seconds >= 60 ? `${Math.round(seconds / 60 * 10) / 10} minute${seconds === 60 ? '' : 's'}` : `${seconds} seconds`
+    uiStore.addNotification(`The presenter started a countdown: the round ends in ${label}. Submit your answers before time runs out.`, 'warning', 4000)
+  }
+})
+
 watch(roundPhase, (phase) => {
   if (phase === 'open' && roundCurrent.value) {
     statusMessage.value = `Round ${roundCurrent.value.roundIndex + 1} in progress`
@@ -1346,6 +1360,7 @@ onMounted(() => {
   const roomFromUrl = route.query.room
   if (roomFromUrl) {
     roomCodeInput.value = roomFromUrl.toUpperCase()
+    roomCodeFromLink.value = true
     displayNameInput.value = ''
     console.log(`Room code from URL: ${roomCodeInput.value}`)
 
@@ -1858,6 +1873,7 @@ const confirmLeaveRoom = () => {
 
 const handleLeaveRoom = () => {
   stopWaitingForRoom()
+  roomCodeFromLink.value = false // they left: they may want a different room
   // They left on purpose: a refresh must not put them back in this room
   localStorage.removeItem('trivia_last_room')
   lockedDisplayName.value = ''

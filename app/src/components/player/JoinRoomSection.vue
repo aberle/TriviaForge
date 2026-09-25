@@ -40,11 +40,17 @@
     <label for="roomCodeManual">Room Code</label>
     <input
       id="roomCodeManual"
+      ref="roomCodeField"
       :value="roomCodeInput"
       type="text"
       placeholder="Enter room code"
+      :readonly="roomCodeLocked"
+      :class="{ 'room-code-locked': roomCodeLocked }"
       @input="$emit('update:roomCodeInput', $event.target.value)"
     />
+    <p v-if="roomCodeLocked" class="form-hint">
+      <button type="button" class="link-btn" @click="unlock">Not the right room? Change room code</button>
+    </p>
 
     <button class="btn-primary" @click="$emit('joinRoom')">Join Room</button>
     <button v-if="!guestOnly" class="btn-secondary" @click="$emit('manageAccount')">Manage Account</button>
@@ -52,6 +58,8 @@
 </template>
 
 <script setup>
+import { ref, nextTick } from 'vue';
+
 defineProps({
   savedUsername: { type: String, default: null },
   usernameInput: { type: String, required: true },
@@ -60,16 +68,36 @@ defineProps({
   // Guest-only mode (server setting): only a display name is needed
   guestOnly: { type: Boolean, default: false },
   // The player has already joined the room entered: their display name is filled in and can't be edited
-  displayNameLocked: { type: Boolean, default: false }
+  displayNameLocked: { type: Boolean, default: false },
+  // The room code came from a link (QR code): it can't be typed over, only changed on purpose
+  roomCodeLocked: { type: Boolean, default: false }
 });
 
-defineEmits(['update:usernameInput', 'update:displayNameInput', 'update:roomCodeInput', 'changeUsername', 'joinRoom', 'manageAccount']);
+const emit = defineEmits(['update:usernameInput', 'update:displayNameInput', 'update:roomCodeInput', 'changeUsername', 'joinRoom', 'manageAccount', 'unlockRoomCode']);
+
+const roomCodeField = ref(null);
+const unlock = async () => {
+  emit('unlockRoomCode');
+  await nextTick();
+  roomCodeField.value?.focus();
+};
 </script>
 
 <style scoped>
-.display-name-locked {
+.display-name-locked,
+.room-code-locked {
   opacity: 0.75;
   cursor: not-allowed;
+}
+
+.link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--info-light);
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .join-section {
