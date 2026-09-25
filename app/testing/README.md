@@ -80,6 +80,7 @@ TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 | `presenter-display-flow` | A whole two-round quiz through the presenter page, a phone, bots and the display page |
 | `legacy-live-game` | A quiz without rounds plays as before; short answers graded; rejoining a completed room (sockets only) |
 | `resume-session` | Resuming a saved session reuses its original room code and session (no duplicate), players rejoin with their answers, resuming a live session points at its room, and a new room is never given a saved session's room code (sockets only) |
+| `question-bank` | Saving a quiz does not copy questions into the bank: unchanged questions keep their row and tags, edited/removed played questions leave the bank (kept only as history), and questions shared with another quiz survive (API only) |
 | `use-rounds-composable` | The client `useRounds` composable against real sockets (no browser) |
 
 Shared plumbing is in `e2e/lib/`: `harness.js` (suite runner, quiz/room/bot/page helpers, cleanup),

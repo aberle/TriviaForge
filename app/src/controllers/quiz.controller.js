@@ -349,6 +349,40 @@ export async function createQuiz(req, res, next) {
 }
 
 /**
+ * What makes two versions of a question the same: text, type, image and the answers (with which are
+ * correct), in order. Used to tell an untouched question from an edited one when a quiz is saved.
+ */
+const questionSignature = (text, type, imageUrl, imageType, answers) =>
+  JSON.stringify([text, type || 'multiple_choice', imageUrl || null, imageType || null, answers]);
+
+/** The signature of a question as it arrives from the admin page. */
+const incomingSignature = (q) => {
+  const type = q.type || 'multiple_choice';
+  const answers = (q.choices || []).map((choice, j) => [choice, type === 'short_answer' ? true : j === q.correctChoice]);
+  return questionSignature(q.text, type, q.imageUrl, q.imageType, answers);
+};
+
+/** The signatures of stored questions, keyed by question id. */
+async function loadStoredSignatures(client, questionIds) {
+  const signatures = new Map();
+  if (questionIds.length === 0) return signatures;
+  const result = await client.query(
+    `SELECT q.id, q.question_text, q.question_type, q.image_url, q.image_type,
+            COALESCE(json_agg(json_build_array(a.answer_text, a.is_correct) ORDER BY a.display_order)
+                     FILTER (WHERE a.id IS NOT NULL), '[]') AS answers
+     FROM questions q
+     LEFT JOIN answers a ON a.question_id = q.id
+     WHERE q.id = ANY($1::int[])
+     GROUP BY q.id`,
+    [questionIds]
+  );
+  for (const row of result.rows) {
+    signatures.set(row.id, questionSignature(row.question_text, row.question_type, row.image_url, row.image_type, row.answers));
+  }
+  return signatures;
+}
+
+/**
  * Update existing quiz
  *
  * PUT /api/quizzes/:filename
@@ -466,9 +500,23 @@ export async function updateQuiz(req, res, next) {
     await client.query('DELETE FROM quiz_questions WHERE quiz_id = $1', [quizId]);
     await client.query('DELETE FROM quiz_rounds WHERE quiz_id = $1', [quizId]);
 
-    // Try to delete old questions that are NOT referenced by session_questions
-    // (Questions used in sessions will be preserved for historical data)
-    if (oldQuestionIds.length > 0) {
+    // A question that is unchanged keeps its row (and its tags and history): saving after a reorder, a
+    // round change or a rename must not copy every question. Only added or edited questions get new
+    // rows. The client sends each question's id; it counts only if it belongs to this quiz.
+    const storedSignatures = await loadStoredSignatures(client, oldQuestionIds);
+    const reusedIds = new Set();
+    const questionIdFor = new Map(); // index in the request -> reused question id
+    questions.forEach((q, i) => {
+      if (!Number.isInteger(q.id) || reusedIds.has(q.id)) return;
+      if (storedSignatures.get(q.id) !== incomingSignature(q)) return;
+      reusedIds.add(q.id);
+      questionIdFor.set(i, q.id);
+    });
+
+    // Delete the old questions that are no longer used. Ones a played session refers to are kept
+    // (history), and so are ones another quiz uses (e.g. created from a selection in the bank).
+    const replacedIds = oldQuestionIds.filter((id) => !reusedIds.has(id));
+    if (replacedIds.length > 0) {
       await client.query(
         `
         DELETE FROM questions
@@ -476,33 +524,42 @@ export async function updateQuiz(req, res, next) {
         AND NOT EXISTS (
           SELECT 1 FROM session_questions WHERE question_id = questions.id
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM quiz_questions WHERE question_id = questions.id
+        )
       `,
-        [oldQuestionIds]
+        [replacedIds]
       );
     }
 
     const roundIds = await insertQuizRounds(client, quizId, rounds);
 
-    // Insert new questions with answers (use authenticated user's ID)
+    // Link reused questions and insert new ones with their answers (use authenticated user's ID)
     const userId = req.user?.user_id || 1; // Fallback for backward compatibility
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
 
       // Insert question - use provided type or default to multiple_choice
       const questionType = q.type || 'multiple_choice';
-      const imageUrl = q.imageUrl || null;
-      const imageType = q.imageType || null;
-      const questionResult = await client.query(
-        'INSERT INTO questions (question_text, question_type, image_url, image_type, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-        [q.text, questionType, imageUrl, imageType, userId]
-      );
-      const questionId = questionResult.rows[0].id;
+      let questionId = questionIdFor.get(i);
+      const isNew = questionId === undefined;
+      if (isNew) {
+        const imageUrl = q.imageUrl || null;
+        const imageType = q.imageType || null;
+        const questionResult = await client.query(
+          'INSERT INTO questions (question_text, question_type, image_url, image_type, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+          [q.text, questionType, imageUrl, imageType, userId]
+        );
+        questionId = questionResult.rows[0].id;
+      }
 
       // Link question to quiz
       await client.query(
         'INSERT INTO quiz_questions (quiz_id, question_id, question_order, round_id) VALUES ($1, $2, $3, $4)',
         [quizId, questionId, i + 1, roundIds[q.roundIndex] ?? null]
       );
+
+      if (!isNew) continue;
 
       // Insert answers — for short_answer questions every entry is an accepted answer, so all are "correct"
       for (let j = 0; j < (q.choices || []).length; j++) {

@@ -12,6 +12,7 @@
  */
 
 import { query, getClient, transaction } from '../config/database.js';
+import { QUESTION_IN_A_QUIZ_SQL } from '../utils/questionFilters.js';
 import {
   NotFoundError,
   BadRequestError,
@@ -68,6 +69,9 @@ export async function listQuestions(req, res) {
   const conditions = [];
   const queryParams = [];
   let paramIndex = 1;
+
+  // Questions no quiz uses any more are kept only for played sessions' history: not part of the bank
+  conditions.push(QUESTION_IN_A_QUIZ_SQL);
 
   // Filter out archived by default
   if (archived !== 'true') {

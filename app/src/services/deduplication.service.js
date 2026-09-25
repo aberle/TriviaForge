@@ -9,6 +9,7 @@
  */
 
 import { query } from '../config/database.js'
+import { QUESTION_IN_A_QUIZ_SQL } from '../utils/questionFilters.js'
 import {
   generateTextHash,
   findSimilarQuestions,
@@ -67,7 +68,7 @@ export async function checkForDuplicates(questionText, options = {}) {
     const exactResult = await query(
       `SELECT ${QUESTION_COLUMNS}
        ${QUESTION_JOINS}
-       WHERE q.text_hash = $1 AND q.is_archived = FALSE
+       WHERE q.text_hash = $1 AND q.is_archived = FALSE AND ${QUESTION_IN_A_QUIZ_SQL}
        ${excludeId ? 'AND q.id != $2' : ''}
        GROUP BY q.id
        LIMIT 1`,
@@ -92,7 +93,7 @@ export async function checkForDuplicates(questionText, options = {}) {
   const questionsResult = await query(
     `SELECT ${QUESTION_COLUMNS}
      ${QUESTION_JOINS}
-     WHERE q.is_archived = FALSE
+     WHERE q.is_archived = FALSE AND ${QUESTION_IN_A_QUIZ_SQL}
      ${excludeId ? 'AND q.id != $1' : ''}
      GROUP BY q.id`,
     excludeId ? [excludeId] : []
@@ -133,7 +134,7 @@ export async function checkBatchForDuplicates(questions, options = {}) {
   const existingResult = await query(
     `SELECT ${QUESTION_COLUMNS}
      ${QUESTION_JOINS}
-     WHERE q.is_archived = FALSE
+     WHERE q.is_archived = FALSE AND ${QUESTION_IN_A_QUIZ_SQL}
      GROUP BY q.id`
   )
 
@@ -185,7 +186,7 @@ export async function checkBatchForDuplicates(questions, options = {}) {
 export async function findAllDuplicateGroups(options = {}) {
   const { threshold = 0.8, includeArchived = false } = options
 
-  const archivedClause = includeArchived ? '' : 'WHERE q.is_archived = FALSE'
+  const archivedClause = `WHERE ${QUESTION_IN_A_QUIZ_SQL}${includeArchived ? '' : ' AND q.is_archived = FALSE'}`
 
   const questionsResult = await query(
     `SELECT ${QUESTION_COLUMNS}, q.created_at
