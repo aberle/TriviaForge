@@ -45,6 +45,11 @@ await runSuite(
       ok(`question ${i + 1} is presented, answered and revealed as correct`, revealed.results?.[0]?.is_correct === true);
     }
 
+    section('Live Standings');
+    const progress = await (await env.api('GET', `/api/room/progress/${room}`)).json();
+    const me = progress.players.find((p) => p.username === 'legacy_pl');
+    ok('the standings score all three answers, including the typed one, and know what was played', me?.correct === 3 && me.answered === 3 && progress.revealedQuestions.join() === '0,1,2' && me.results[2] === true, JSON.stringify(me));
+
     section('Completing');
     const beforeComplete = player.mark();
     pres.emit('completeQuiz', { roomCode: room });

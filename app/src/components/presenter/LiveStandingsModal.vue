@@ -67,7 +67,8 @@
             <div class="question-header-detail">
               <div class="question-number-badge">Q{{ qIdx + 1 }}</div>
               <div class="question-status-badges">
-                <span v-if="presentedQuestions.includes(qIdx)" class="status-badge presented">Presented</span>
+                <span v-if="inProgressQuestions.includes(qIdx)" class="status-badge presented">In progress</span>
+                <span v-else-if="presentedQuestions.includes(qIdx)" class="status-badge presented">Presented</span>
                 <span v-if="revealedQuestions.includes(qIdx)" class="status-badge revealed">Revealed</span>
               </div>
             </div>
@@ -83,15 +84,16 @@
               <div
                 v-for="(choice, cIdx) in question.choices"
                 :key="cIdx"
-                :class="['choice-item', { 'choice-correct': cIdx === question.correctChoice && revealedQuestions.includes(qIdx) }]"
+                :class="['choice-item', { 'choice-correct': isCorrectChoice(question, cIdx) && revealedQuestions.includes(qIdx) }]"
               >
-                <strong>{{ String.fromCharCode(65 + cIdx) }}.</strong> {{ choice }}
-                <span v-if="cIdx === question.correctChoice && revealedQuestions.includes(qIdx)" class="correct-indicator"><AppIcon name="check" size="sm" /> Correct</span>
+                <strong v-if="question.type !== 'short_answer'">{{ String.fromCharCode(65 + cIdx) }}.</strong>
+                <strong v-else>Accepted:</strong> {{ choice }}
+                <span v-if="isCorrectChoice(question, cIdx) && revealedQuestions.includes(qIdx)" class="correct-indicator"><AppIcon name="check" size="sm" /> Correct</span>
               </div>
             </div>
 
             <!-- Player Responses (expandable) -->
-            <div v-if="presentedQuestions.includes(qIdx)" class="player-answers">
+            <div v-if="presentedQuestions.includes(qIdx) || revealedQuestions.includes(qIdx)" class="player-answers">
               <div class="player-answers-header" @click="toggleQuestion(qIdx)">
                 <strong>Player Responses ({{ getAnswerCount(qIdx) }}/{{ sortedPlayers.length }})</strong>
                 <AppIcon name="chevron-down" size="sm" class="toggle-arrow" :class="{ expanded: expandedQuestions.has(qIdx) }" />
@@ -100,14 +102,14 @@
                 <div
                   v-for="player in sortedPlayers"
                   :key="player.name"
-                  :class="['player-response', getResponseClass(player, qIdx, question.correctChoice)]"
+                  :class="['player-response', getResponseClass(player, qIdx)]"
                 >
                   <span class="player-name">{{ player.name }}:</span>
                   <span class="player-answer">
                     <template v-if="player.answers && player.answers[qIdx] !== undefined">
-                      {{ String.fromCharCode(65 + player.answers[qIdx]) }}
+                      {{ answerLabel(question, player.answers[qIdx]) }}
                       <template v-if="revealedQuestions.includes(qIdx)">
-                        <AppIcon v-if="player.answers[qIdx] === question.correctChoice" name="check" size="sm" class="answer-result correct" />
+                        <AppIcon v-if="isCorrect(player, qIdx)" name="check" size="sm" class="answer-result correct" />
                         <AppIcon v-else name="x" size="sm" class="answer-result incorrect" />
                       </template>
                     </template>
@@ -117,6 +119,9 @@
                   </span>
                 </div>
               </div>
+            </div>
+            <div v-else-if="inProgressQuestions.includes(qIdx)" class="not-presented">
+              <em>Round in progress: responses appear when the round ends</em>
             </div>
             <div v-else class="not-presented">
               <em>Question not yet presented</em>
@@ -139,7 +144,9 @@ const props = defineProps({
   sortedPlayers: { type: Array, default: () => [] },
   questions: { type: Array, default: () => [] },
   revealedQuestions: { type: Array, default: () => [] },
-  presentedQuestions: { type: Array, default: () => [] }
+  presentedQuestions: { type: Array, default: () => [] },
+  // Questions of a round that is open right now (round quizzes)
+  inProgressQuestions: { type: Array, default: () => [] }
 })
 
 defineEmits(['close'])
@@ -163,14 +170,27 @@ const getAnswerCount = (qIdx) => {
   return props.sortedPlayers.filter(p => p.answers && p.answers[qIdx] !== undefined).length
 }
 
+// Short-answer questions keep their accepted answers in `choices` and have no single correct choice
+const isCorrectChoice = (question, cIdx) => question.type === 'short_answer' || cIdx === question.correctChoice
+
+// Whether a player's answer to a revealed question was right (graded by the server: short answers are
+// matched by similarity, so it can't be decided from the answer alone)
+const isCorrect = (player, qIdx) => player.results?.[qIdx] === true
+
+// What to show for an answer: the letter for a choice, the typed text for a short answer
+const answerLabel = (question, answer) => {
+  if (question.type === 'short_answer' || typeof answer === 'string') return `"${answer}"`
+  return String.fromCharCode(65 + answer)
+}
+
 // Get response class for player answer
-const getResponseClass = (player, qIdx, correctChoice) => {
+const getResponseClass = (player, qIdx) => {
   if (!player.answers || player.answers[qIdx] === undefined) {
     return 'response-unanswered'
   }
   // Only show correct/incorrect if the question has been revealed
   if (props.revealedQuestions.includes(qIdx)) {
-    return player.answers[qIdx] === correctChoice ? 'response-correct' : 'response-incorrect'
+    return isCorrect(player, qIdx) ? 'response-correct' : 'response-incorrect'
   }
   return 'response-answered'
 }

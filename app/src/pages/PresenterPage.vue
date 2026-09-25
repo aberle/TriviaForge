@@ -108,8 +108,9 @@
       :progressStats="progressStats"
       :sortedPlayers="sortedPlayers"
       :questions="currentQuestions"
-      :revealedQuestions="revealedQuestions"
-      :presentedQuestions="presentedQuestions"
+      :revealedQuestions="standingsRevealed"
+      :presentedQuestions="standingsPresented"
+      :inProgressQuestions="standingsInProgress"
       @close="showProgressModal = false"
     />
 
@@ -201,7 +202,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Modal from '@/components/common/Modal.vue'
 import Button from '@/components/common/Button.vue'
@@ -288,6 +289,13 @@ const incompleteSessions = ref([])
 const connectedPlayers = ref([])
 const activeRooms = ref([])
 const progressStats = ref(null)
+// What the server says has been played, as of the last time Live Standings was loaded (in a round quiz
+// the live lists above only change through the legacy question events)
+const progressPresented = ref([])
+const progressRevealed = ref([])
+const standingsInProgress = ref([])
+const standingsPresented = computed(() => [...new Set([...presentedQuestions.value, ...progressPresented.value])])
+const standingsRevealed = computed(() => [...new Set([...revealedQuestions.value, ...progressRevealed.value])])
 const sortedPlayers = ref([])
 
 // All players answered notification state
@@ -644,6 +652,9 @@ const fetchPresenterProgress = async () => {
   try {
     const response = await get(`/api/room/progress/${currentRoomCode.value}`)
     const roomProgress = response.data
+    progressPresented.value = roomProgress.presentedQuestions || []
+    progressRevealed.value = roomProgress.revealedQuestions || []
+    standingsInProgress.value = roomProgress.inProgressQuestions || []
 
     // Filter out spectators from all statistics
     const nonSpectatorPlayers = roomProgress.players ? roomProgress.players.filter(p => !p.isSpectator) : []
@@ -686,6 +697,11 @@ const fetchPresenterProgress = async () => {
   }
 }
 
+// A round ended (or started) while Live Standings is open: refresh it
+watch([roundPhase, roundLastEnded], () => {
+  if (showProgressModal.value && currentRoomCode.value) fetchPresenterProgress()
+})
+
 // Menu toggle
 const toggleMenu = () => {
   menuOpen.value = !menuOpen.value
@@ -704,6 +720,9 @@ const resetRoom = () => {
   currentRoomCode.value = null
   currentQuizFilename.value = null
   currentQuestions.value = []
+  progressPresented.value = []
+  progressRevealed.value = []
+  standingsInProgress.value = []
   currentQuestionIndex.value = -1
   presentedQuestionIndex.value = null
   currentQuizTitle.value = 'No Quiz Loaded'

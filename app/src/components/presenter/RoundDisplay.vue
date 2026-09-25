@@ -26,7 +26,7 @@
             <h3>Round {{ current.roundIndex + 1 }}: {{ current.title }}</h3>
           </div>
           <Button variant="danger" :class="{ 'ready-pulse': everyoneSubmitted }" @click="$emit('endRound')">
-            <AppIcon name="square" size="sm" /> End Round
+            <AppIcon name="circle-stop" size="sm" /> End Round
           </Button>
         </div>
 

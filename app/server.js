@@ -875,7 +875,9 @@ app.get('/api/player/progress/:roomCode', async (req, res) => {
 });
 
 // Get all players' progress in a room (for presenter standings)
-app.get('/api/room/progress/:roomCode', async (req, res) => {
+// The presenter's Live Standings. Admin only: it lists every player's answers and score, which
+// players must not see early (a round quiz's final standings are withheld until it is completed).
+app.get('/api/room/progress/:roomCode', requireAdmin, async (req, res) => {
   try {
     const { roomCode } = req.params;
 
@@ -884,51 +886,57 @@ app.get('/api/room/progress/:roomCode', async (req, res) => {
       return res.status(404).json({ error: 'Room not found or session ended' });
     }
 
+    const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
+    const revealed = Array.isArray(room.revealedQuestions) ? room.revealedQuestions : [];
+
     // Build progress data for all players (exclude spectators)
     const players = Object.values(room.players)
       .filter(player => !player.isSpectator) // Exclude spectators from standings
       .map(player => {
-        // Count how many questions this player answered correctly
+        // Score the questions that have been revealed (in a round quiz: the rounds that have ended)
         let correctCount = 0;
         let answeredCount = 0;
+        const results = {}; // { [questionIndex]: true | false } for answered, revealed questions
 
-        // Iterate through revealed questions to calculate scores
-        if (room.revealedQuestions && Array.isArray(room.revealedQuestions)) {
-          room.revealedQuestions.forEach(questionIndex => {
-            const question = room.quizData.questions[questionIndex];
-            const playerChoice = player.answers && player.answers[questionIndex] !== undefined
-              ? player.answers[questionIndex]
-              : null;
+        revealed.forEach(questionIndex => {
+          const question = room.quizData.questions[questionIndex];
+          const answer = player.answers && player.answers[questionIndex] !== undefined
+            ? player.answers[questionIndex]
+            : null;
+          if (!question || answer === null) return;
 
-            if (playerChoice !== null) {
-              answeredCount++;
-              const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
-              const isCorrect = question.type === 'short_answer'
-                ? matchShortAnswer(playerChoice, question.acceptedAnswers || [], threshold).isCorrect
-                : playerChoice === question.correctChoice;
-              if (isCorrect) {
-                correctCount++;
-              }
-            }
-          });
-        }
+          answeredCount++;
+          results[questionIndex] = gradeAnswer(question, answer, threshold);
+          if (results[questionIndex]) correctCount++;
+        });
 
         return {
-          name: player.displayName || player.username,
+          // `name` is the display name (players are stored with `name`; username may be a generated guest id)
+          name: player.name || player.displayName || player.username,
           username: player.username,
           correct: correctCount,
           answered: answeredCount,
           connected: player.connected,
-          answers: player.answers || {}
+          answers: player.answers || {},
+          results
         };
       });
+
+    // Questions of the round that is open right now: in progress, so not "presented" yet but not
+    // waiting either. Their answers stay private until the round ends.
+    const inProgressQuestions = room.rounds?.phase === 'open' && room.rounds.current !== null
+      ? room.quizData.rounds?.[room.rounds.current]?.questionIndexes || []
+      : [];
 
     const roomProgress = {
       roomCode: roomCode,
       quizTitle: room.quizData.title,
       totalQuestions: room.quizData.questions.length,
       presentedCount: room.presentedQuestions ? room.presentedQuestions.length : 0,
-      revealedCount: room.revealedQuestions ? room.revealedQuestions.length : 0,
+      revealedCount: revealed.length,
+      presentedQuestions: room.presentedQuestions || [],
+      revealedQuestions: revealed,
+      inProgressQuestions,
       playerCount: players.length,
       players: players
     };

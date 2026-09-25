@@ -57,6 +57,9 @@ await runSuite(
     await display.waitText('Round 1 of 2');
     ok('the display shows the round, its questions and the open-ended marker, but no accepted answers', (await display.has('Warmup')) && (await display.has('What is the capital of France?')) && (await display.has('Open-ended answer')) && !(await display.has('Accepted:')));
     ok('the presenter sees the correct answers (marked for them only)', (await presenter.has('Accepted:')) && (await presenter.has('answers shown for you only')));
+    // Icons are fetched when first shown, so give it a moment
+    const stopIcon = `(() => { const b = [...document.querySelectorAll('button')].find((x) => x.innerText.includes('End Round')); const svg = b && b.querySelector('svg'); return !!svg && !!svg.querySelector('circle') && !!svg.querySelector('rect'); })()`;
+    ok('the End Round button shows a stop symbol (a circle with a square in it), not a bare box', await presenter.waitFor(stopIcon, { timeout: 5000 }).then(() => true, () => false));
     bob.emit('submitRound', { roomCode: room, roundIndex: 0, answers: [0, 1, 'Jupiter'] });
     await presenter.waitText('1 of 3 players have submitted');
 
@@ -79,10 +82,36 @@ await runSuite(
     ok('the display shows the answers and the leaderboard', (await display.has('Leaderboard')) && (await display.has('Accepted:')) && (await display.has('Jupiter')));
     await presenter.waitText('Leaderboard after Round 1');
 
+    section('Live Standings (round 1 has ended)');
+    const anonymous = await fetch(`${BASE}/api/room/progress/${room}`);
+    ok("Live Standings data is for the presenter only: a player or anyone else can't fetch it", anonymous.status === 401 || anonymous.status === 403, String(anonymous.status));
+    await presenter.clickText('Standings', '.btn-standings');
+    await presenter.waitText('Question Breakdown');
+    await sleep(600);
+    const standings = await presenter.eval(`document.querySelector('.modal-overlay').innerText`);
+    ok("players are listed by display name, not their account ids", standings.includes('Ann') && standings.includes('Bob') && !/bob_e2e|cy_e2e|guest_[0-9a-f]{6}|user_[0-9a-z]{4}/.test(standings), standings.slice(0, 300));
+    const breakdown = await presenter.eval(`[...document.querySelectorAll('.modal-overlay .question-detail')].map((q) => ({ revealed: /revealed/i.test(q.querySelector('.question-status-badges')?.innerText || ''), notPresented: /not yet presented/i.test(q.innerText) }))`);
+    ok("the played round's questions are shown as revealed", breakdown.slice(0, 3).every((q) => q.revealed && !q.notPresented), JSON.stringify(breakdown));
+    ok("the next round's questions are still 'not yet presented'", breakdown.slice(3).every((q) => q.notPresented && !q.revealed), JSON.stringify(breakdown));
+    // Expand the short-answer question's responses: the typed text is shown, graded correct
+    await presenter.eval(`document.querySelectorAll('.modal-overlay .player-answers-header')[2].click(); true`);
+    await sleep(300);
+    const shortAnswer = await presenter.eval(`document.querySelectorAll('.modal-overlay .question-detail')[2].innerText`);
+    ok('a short answer shows what the player typed, marked correct', /jupitar/i.test(shortAnswer) && !!(await presenter.eval(`document.querySelector('.modal-overlay .question-detail:nth-of-type(3) .response-correct')`)), shortAnswer.slice(0, 300));
+    await presenter.eval(`document.querySelector('.modal-close-btn').click(); true`);
+    await sleep(300);
+
     section('Round 2 (untimed) and the final standings');
     await presenter.clickText('Start');
     await ann.waitText('Round 2 of 2');
     ok('an untimed round says so', await ann.has('No time limit'));
+    await presenter.clickText('Standings', '.btn-standings');
+    await presenter.waitText('Question Breakdown');
+    await sleep(500);
+    const openBreakdown = await presenter.eval(`[...document.querySelectorAll('.modal-overlay .question-detail')].slice(3).map((q) => q.innerText)`);
+    ok('while a round is open its questions say the round is in progress', openBreakdown.length === 2 && openBreakdown.every((t) => /round in progress/i.test(t) && !/not yet presented/i.test(t)), JSON.stringify(openBreakdown).slice(0, 200));
+    await presenter.eval(`document.querySelector('.modal-close-btn').click(); true`);
+    await sleep(300);
     bob.emit('submitRound', { roomCode: room, roundIndex: 1, answers: [1, 0] });
     await pick(ann, 0, 'Eight');
     await pick(ann, 1, 'Mars');
