@@ -18,7 +18,9 @@
     "test:stress": "TEST_PLAYERS=20 TEST_VERBOSE=false node testing/test-runner.js",
     "test:verbose": "TEST_VERBOSE=true node testing/test-runner.js",
     "test:quick": "TEST_PLAYERS=3 TEST_QUESTION_DELAY=1000 TEST_ANSWER_DELAY=500 node testing/test-runner.js",
-    "test:rounds": "node testing/rounds-test.js"
+    "test:rounds": "node testing/rounds-test.js",
+    "test:component": "node testing/component/podium-ties.test.js && node testing/component/round-components.test.js && node testing/component/admin-round-handlers.test.js",
+    "test:e2e": "node testing/e2e/run.js"
   },
   "dependencies": {
     "@iconify/vue": "^4.3.0",

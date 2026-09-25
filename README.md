@@ -564,9 +564,15 @@ Set environment variables for custom scenarios:
 docker-compose exec -e TEST_PLAYERS=30 app node testing/test-runner.js
 ```
 
-### Rounds Test
+### Rounds Tests
 
-`npm run test:rounds` (from `app/`) drives a running server over real Socket.IO connections (presenter, players, display) through a two-round quiz and checks answer leaks, timer expiry, reconnects, resume and persistence. Set `TEST_BASE_URL` and `TEST_ADMIN_PASSWORD` (and `DATABASE_URL` to also verify what was saved). It takes about 30 seconds.
+Run these from `app/`:
+
+- `npm run test:component`: podium ties, round components and the admin round handlers. No server needed.
+- `npm run test:rounds`: drives a running server over real Socket.IO connections (presenter, players, display) through a two-round quiz and checks answer leaks, timer expiry, reconnects, resume and persistence. About 30 seconds.
+- `npm run test:e2e`: exercises the real player, presenter, display and admin pages in headless Chrome (needs Chrome).
+
+The last two run against a server you start yourself: set `TEST_BASE_URL` and `TEST_ADMIN_PASSWORD`, and run the server with `DEBUG_MODE=true`, ideally on a scratch database. See [app/testing/README.md](app/testing/README.md) for setup.
 
 **Available Environment Variables:**
 - `TEST_PLAYERS` - Number of simulated players (default: 5)

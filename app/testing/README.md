@@ -11,8 +11,86 @@ testing/
 ├── test-runner.js              # Main automated test runner
 ├── stress-test.config.js       # Stress test scenario configurations
 ├── rounds-test.js              # Socket.IO integration test for quizzes with rounds
+├── component/                  # Component/logic tests (no server needed) - see below
+└── e2e/                        # End-to-end tests in a real browser and over sockets - see below
 └── logs/                       # Test execution logs (future)
 ```
+
+## 🧪 Rounds feature tests
+
+Three layers, from fastest to most thorough. All are plain Node scripts (no test framework), print
+`✅`/`❌` per check and exit non-zero on failure.
+
+| Command (from `app/`) | What it covers | Needs |
+|---|---|---|
+| `npm run test:component` | Podium ties, round components (SSR), admin round handlers with a fake backend | Nothing (no server, DB or browser) |
+| `npm run test:rounds` | The round socket protocol: answer-leak scan, timers, races, presenter-only controls, resume, persistence | A running server |
+| `npm run test:e2e` | The real UI in headless Chrome (player, presenter, display, admin drag and drop, joining, reconnecting) plus a round-less quiz and the client composable | A running server and Chrome |
+
+### Setting up for `test:rounds` and `test:e2e`
+
+1. **Run a server you can throw data at**, ideally not your real one. The tests create their own
+   quizzes and rooms and remove them afterwards (they never touch anything they didn't create), but
+   they do write to the database and start real live rooms. A scratch database is a good idea:
+   ```bash
+   createdb triviaforge_test
+   DATABASE_URL=postgres://you@localhost:5432/triviaforge_test \
+   APP_PORT=3100 SERVER_URL=http://localhost:3100 \
+   DEBUG_MODE=true NODE_ENV=development ADMIN_PASSWORD=testadmin123 CSRF_SECRET=test \
+   node server.js
+   ```
+   (Build the frontend first with `npx vite build`, as the server serves `app/dist`. Rebuild after
+   frontend changes and restart after server changes.)
+2. **`DEBUG_MODE=true` is strongly recommended.** Otherwise the login endpoint is rate limited and the
+   many logins and joins can trip the limits. On a shared server, raise `SOCKET_JOIN_LIMIT` and
+   `SOCKET_ANSWER_LIMIT` instead.
+3. **Chrome or Chromium** for the browser suites. It's found automatically on macOS/Windows/Linux, or
+   set `CHROME_PATH`. Without it `test:e2e` skips the browser suites and says so loudly.
+4. Point the tests at the server:
+
+   | Variable | Default | |
+   |---|---|---|
+   | `TEST_BASE_URL` | `http://localhost:3000` | Server under test |
+   | `TEST_ADMIN_USER` / `TEST_ADMIN_PASSWORD` | `admin` / `changeme` | Must match the server's admin login |
+   | `TEST_ADMIN_TOKEN` | (login) | Reuse an existing login token (the runner does this for you) |
+   | `CHROME_PATH` | (auto-detect) | Chrome/Chromium binary |
+   | `TEST_ARTIFACTS_DIR` | system temp `/triviaforge-e2e` | Where failure screenshots are written |
+   | `DATABASE_URL` | (unset) | Optional, lets `test:rounds` also verify what was persisted |
+
+```bash
+cd app
+TEST_BASE_URL=http://localhost:3100 TEST_ADMIN_PASSWORD=testadmin123 npm run test:e2e
+npm run test:e2e -- reconnect         # only suites whose file name contains "reconnect"
+npm run test:e2e -- --no-browser      # skip the suites that need Chrome
+TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
+```
+
+**Guest-only mode.** The join suite adapts to the server's `GUEST_ONLY_MODE` (it checks the
+normal join form when off and the display-name-only form when on). To cover both, run it twice, once
+against a server started with `GUEST_ONLY_MODE=true`. The other suites work in either mode.
+
+### The e2e suites (`testing/e2e/`)
+
+| Suite | Covers |
+|---|---|
+| `player-round-flow` | Player's round screen: selection highlight, progress modal, no-confirm submit, resubmitting, unsent-change warning, refresh mid-round, timed auto-submit |
+| `results-and-standings` | Leaderboards between rounds, final standings withheld until completion (screen and wire), podium ties, full leaderboard, results surviving a refresh, late joiners |
+| `join-and-identity` | Unique display names, races, keeping the original name, QR link behaviour, guest-only vs normal join form |
+| `reconnect` | Refresh shows "Reconnecting" instead of the landing page, fallback when the room is closed or the server is unreachable, leaving on purpose |
+| `admin-authoring` | Round headers/badge, rename keeps the time limit, drag questions within and between rounds with the drop indicators |
+| `presenter-display-flow` | A whole two-round quiz through the presenter page, a phone, bots and the display page |
+| `legacy-live-game` | A quiz without rounds plays as before; short answers graded; rejoining a completed room (sockets only) |
+| `use-rounds-composable` | The client `useRounds` composable against real sockets (no browser) |
+
+Shared plumbing is in `e2e/lib/`: `harness.js` (suite runner, quiz/room/bot/page helpers, cleanup),
+`cdp.js` (a small Chrome DevTools Protocol client, no dependencies beyond Node 22) and `config.js`.
+
+Tips when writing or debugging a browser test:
+- On failure a suite screenshots every open tab into `TEST_ARTIFACTS_DIR`.
+- `innerText` reflects CSS `text-transform`, so `page.waitText`/`has` match case-insensitively.
+- `v-show` leaves hidden elements in the DOM: use `page.visible(selector)`, not existence.
+- Background tabs pause animations and `requestAnimationFrame`, so open tabs you assert on in the foreground.
+- Two tabs with the same player ID are blocked by the multi-tab guard; use one browser tab per player.
 
 ## 🚀 Quick Start
 

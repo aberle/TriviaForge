@@ -7,7 +7,7 @@ A quiz can be split into rounds. In a round, players see **every question at onc
 **Authoring (Admin → Quiz Management)**
 1. Select a quiz and click the layers icon in the Questions header ("Split this quiz into rounds"). All questions go into Round 1.
 2. Use **Add Round** to create more. Each round header has a title and a **Time limit (sec)**: leave it blank for an untimed round, or enter 10 to 3600.
-3. Move a question to another round with the selector on its card, by dropping it on a question in another round, or by changing **Round** in the Question Editor.
+3. Move a question to another round by dragging it: drop it before or after any question (a line shows where it will land, and the destination round is highlighted), onto a round's header (it goes to the top of that round), or into the dashed "Drop here" zone at the end of a round. That zone is also the way into an empty round. You can also use the selector on its card, or change **Round** in the Question Editor.
 4. Reordering and shuffling stay inside a round. Deleting a round moves its questions into the neighbouring round; deleting the only round returns the quiz to a flat list. Empty rounds are skipped when played.
 
 **Presenting**
@@ -61,4 +61,8 @@ Legacy events behave differently in a round quiz: `presentQuestion`, `revealAnsw
 
 ## Testing
 
-`npm run test:rounds` (from `app/`) runs `testing/rounds-test.js` against a running server. See [app/testing/README.md](../app/testing/README.md).
+- `npm run test:component` (from `app/`): podium ties, round components and the admin round handlers. No server needed.
+- `npm run test:rounds`: the socket protocol, against a running server (`testing/rounds-test.js`).
+- `npm run test:e2e`: the real UI in headless Chrome, plus a round-less quiz and the client composable, against a running server.
+
+Setup, environment variables and the list of suites are in [app/testing/README.md](../app/testing/README.md).
