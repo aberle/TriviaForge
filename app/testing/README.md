@@ -72,6 +72,7 @@ TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 | Suite | Covers |
 |---|---|
 | `player-round-flow` | Player's round screen: selection highlight, progress modal, no-confirm submit, resubmitting, unsent-change warning, refresh mid-round, timed auto-submit |
+| `round-unanswered` | Submitting with blank questions: first tap warns and marks them, second sends anyway; complete rounds and the timer never ask |
 | `results-and-standings` | Leaderboards between rounds, final standings withheld until completion (screen and wire), podium ties, full leaderboard, results surviving a refresh, late joiners |
 | `join-and-identity` | Unique display names, races, keeping the original name, QR link behaviour, guest-only vs normal join form |
 | `reconnect` | Refresh shows "Reconnecting" instead of the landing page, fallback when the room is closed or the server is unreachable, leaving on purpose |

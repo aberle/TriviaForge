@@ -1,5 +1,5 @@
 <template>
-  <div class="round-questions">
+  <div ref="root" class="round-questions">
     <div class="round-header">
       <div class="round-heading">
         <span class="round-kicker">Round {{ round.roundIndex + 1 }} of {{ round.totalRounds }}</span>
@@ -24,9 +24,14 @@
       v-for="(question, k) in round.questions"
       :key="question.index"
       class="question-card"
-      :class="{ answered: answers[k] !== null }"
+      :class="{ answered: answers[k] !== null, 'needs-answer': warnedUnanswered && !hasAnswer(answers[k]) }"
     >
-      <div class="question-label">Question {{ k + 1 }}</div>
+      <div class="question-label">
+        Question {{ k + 1 }}
+        <span v-if="warnedUnanswered && !hasAnswer(answers[k])" class="needs-answer-tag">
+          <AppIcon name="alert-circle" size="sm" /> Not answered yet
+        </span>
+      </div>
       <img
         v-if="question.imageUrl"
         :src="question.imageUrl"
@@ -79,6 +84,20 @@
       </div>
     </div>
 
+    <!-- Tapping Submit with questions left blank warns first (and marks them); tapping again sends anyway -->
+    <div v-if="warnedUnanswered" class="unanswered-warning" role="alert">
+      <AppIcon name="alert-triangle" size="lg" class="unanswered-icon" />
+      <div>
+        <strong>
+          {{ unanswered.length === 1 ? '1 question is' : `${unanswered.length} questions are` }} still unanswered
+        </strong>
+        <p>
+          {{ unansweredNames }}: answer {{ unanswered.length === 1 ? 'it' : 'them' }}, or tap
+          <em>{{ submitLabel }}</em> to send your answers as they are. Unanswered questions score no points.
+        </p>
+      </div>
+    </div>
+
     <div v-if="submitMessage" class="submit-error" role="alert">
       <AppIcon name="alert-triangle" size="sm" /> {{ submitMessage }}
     </div>
@@ -114,7 +133,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import AppIcon from '@/components/common/AppIcon.vue';
 import CountdownTimer from '@/components/player/CountdownTimer.vue';
 
@@ -137,7 +156,7 @@ const props = defineProps({
   snapshotVersion: { type: Number, default: 0 }
 });
 
-const emit = defineEmits(['saveDraft', 'submit', 'submitAccepted']);
+const emit = defineEmits(['saveDraft', 'submit', 'submitAccepted', 'unanswered']);
 
 const blankAnswers = () => props.round.questions.map(() => null);
 
@@ -155,12 +174,20 @@ let pendingIsAuto = false; // ...and was sent by the timer running out rather th
 const hasAnswer = (value) => value !== null && value !== '';
 const answeredCount = computed(() => answers.value.filter(hasAnswer).length);
 
+// Questions still blank. After the player has been warned about them they stay marked until answered.
+const root = ref(null);
+const warned = ref(false);
+const unanswered = computed(() => props.round.questions.map((_, k) => k).filter((k) => !hasAnswer(answers.value[k])));
+const warnedUnanswered = computed(() => warned.value && unanswered.value.length > 0);
+const unansweredNames = computed(() => unanswered.value.map((k) => `Question ${k + 1}`).join(', '));
+
 // Answers can be changed after submitting; they only count once resubmitted
 const sameAnswers = (a, b) => a.every((value, k) => (hasAnswer(value) ? value : null) === (hasAnswer(b[k]) ? b[k] : null));
 const dirty = computed(() => props.submitted && !!submittedAnswers.value && !sameAnswers(answers.value, submittedAnswers.value));
 const submitLabel = computed(() => {
   if (pendingSubmit.value) return 'Submitting...';
-  return props.submitted ? 'Submit Updated Answers' : 'Submit Answers';
+  const label = props.submitted ? 'Submit Updated Answers' : 'Submit Answers';
+  return warnedUnanswered.value ? `${label} Anyway` : label;
 });
 
 // ---- Draft sync: keep the server's copy fresh so a reconnect or the timer never loses answers ----
@@ -202,9 +229,18 @@ const sendSubmit = ({ auto = false } = {}) => {
   emit('submit', pendingPayload);
 };
 
-// No confirmation: answers can be changed and submitted again until the round ends
-const handleSubmitClick = () => {
-  if (!pendingSubmit.value) sendSubmit();
+// Answers can be changed and submitted again until the round ends. If some questions are blank, the
+// first tap only warns (and marks them); the next tap sends the answers as they are.
+const handleSubmitClick = async () => {
+  if (pendingSubmit.value) return;
+  if (unanswered.value.length > 0 && !warned.value) {
+    warned.value = true;
+    emit('unanswered', unanswered.value.length); // the page shows a notice that stays in view wherever the player has scrolled
+    await nextTick();
+    root.value?.querySelector('.question-card.needs-answer')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  sendSubmit();
 };
 
 // The timer ran out: submit whatever is filled in (or any unsent changes)
@@ -321,6 +357,39 @@ onUnmounted(() => {
 
 .question-card.answered {
   border-color: var(--info-light);
+}
+
+.question-card.needs-answer {
+  border-color: var(--warning-light);
+  background: var(--warning-bg-10);
+}
+
+.needs-answer-tag {
+  margin-left: 0.5rem;
+  color: var(--warning-light);
+  text-transform: none;
+}
+
+.unanswered-warning {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+  padding: 1rem 1.1rem;
+  background: var(--warning-bg-20);
+  border: 1px solid var(--warning-light);
+  border-radius: 12px;
+  color: var(--text-primary);
+}
+
+.unanswered-warning p {
+  margin: 0.25rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.unanswered-icon {
+  color: var(--warning-light);
+  flex-shrink: 0;
 }
 
 .question-label {

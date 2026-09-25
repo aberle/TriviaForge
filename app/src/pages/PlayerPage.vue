@@ -85,6 +85,7 @@
           @saveDraft="saveRoundDraft"
           @submit="submitRound"
           @submitAccepted="onRoundSubmitAccepted"
+          @unanswered="onRoundUnanswered"
         />
         <RoundReview
           v-else-if="roundPhase === 'ended' && roundLastEnded"
@@ -1145,6 +1146,16 @@ const submitRound = (answers) => {
 
 // The server accepted a round submit: confirm with a toast. (A submit made by the timer running out
 // gets none: the round is ending and the results screen follows.)
+// Submit was tapped with questions left blank: the blank ones are marked on the page; say so here too,
+// since the player may be looking at a different part of a long round
+const onRoundUnanswered = (count) => {
+  uiStore.addNotification(
+    `${count === 1 ? '1 question is' : `${count} questions are`} still unanswered. Answer ${count === 1 ? 'it' : 'them'}, or tap submit again to send anyway.`,
+    'warning',
+    6000
+  )
+}
+
 const onRoundSubmitAccepted = ({ firstSubmit, auto }) => {
   if (auto) return
   if (firstSubmit) {

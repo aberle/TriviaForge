@@ -306,5 +306,8 @@ export function pick(page, cardIndex, choiceText) {
 /** Submit the open round on a player page and wait for the confirmation. */
 export async function submitAnswers(page) {
   await page.clickText('Submit Answers');
+  // With questions left blank the first tap only warns: tap again to send them as they are
+  await sleep(350);
+  if (await page.has('still unanswered')) await page.clickText('Anyway');
   await page.waitText('Answers submitted!');
 }

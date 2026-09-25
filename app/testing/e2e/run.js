@@ -18,6 +18,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 const SUITES = [
   { file: 'player-round-flow.e2e.js', browser: true },
+  { file: 'round-unanswered.e2e.js', browser: true },
   { file: 'results-and-standings.e2e.js', browser: true },
   { file: 'join-and-identity.e2e.js', browser: true },
   { file: 'reconnect.e2e.js', browser: true },
