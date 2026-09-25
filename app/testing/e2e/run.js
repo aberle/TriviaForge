@@ -24,6 +24,7 @@ const SUITES = [
   { file: 'admin-authoring.e2e.js', browser: true },
   { file: 'solo-mode.e2e.js', browser: true },
   { file: 'presenter-display-flow.e2e.js', browser: true },
+  { file: 'round-countdown.e2e.js', browser: true },
   { file: 'legacy-live-game.e2e.js', browser: false },
   { file: 'resume-session.e2e.js', browser: false },
   { file: 'question-bank.e2e.js', browser: false },

@@ -13,7 +13,7 @@ A quiz can be split into rounds. In a round, players see **every question at onc
 **Presenting**
 1. Make the room live as usual. The middle column shows the rounds instead of the question list. Auto-pilot is not available for round quizzes.
 2. **Start** a round. Players and the display page see all its questions at once.
-3. Watch "X of N players have submitted". An untimed round ends when you click **End Round** (the button pulses once everyone has submitted). A timed round ends by itself when time is up, and you can still end it early.
+3. Watch "X of N players have submitted". An untimed round ends when you click **End Round** (the button pulses once everyone has submitted), or you can start a **countdown** on it (30 s, 1, 2 or 5 min, or your own 10 to 3600 s): it ends by itself when the countdown reaches zero, and you can cancel it. A timed round ends by itself when time is up, and you can still end it early.
 4. When a round ends, everyone sees the leaderboard, players also see their own results, and the display page shows the answers. Start the next round.
 5. After the last round, only you see the final standings. Players still see their own round result and answers, and the display shows the answers, but neither gets the leaderboard, rank or total until you click **Complete Quiz & Save** (which then shows the final podium and saves the session). The server withholds this data rather than just hiding it on screen.
 
@@ -40,6 +40,8 @@ Client → server (payloads include `roomCode`):
 |---|---|---|---|
 | `startRound` | `{ roundIndex }` | presenter | Errors via `roomError`. Not while a round is open, and not for a played round. |
 | `endRound` | `{ roundIndex }` | presenter | Ignored unless that round is the open one. |
+| `startRoundCountdown` | `{ roundIndex, seconds }` | presenter | Only on an open, untimed round without a countdown; 10 to 3600 s. Errors via `roomError`. |
+| `cancelRoundCountdown` | `{ roundIndex }` | presenter | Puts the round back to no time limit. |
 | `saveRoundDraft` | `{ roundIndex, answers }` | player | No reply. Capped at 60 per 10 s per socket. |
 | `submitRound` | `{ roundIndex, answers }` | player | Can be sent again until the round ends; the newest submission replaces the last. |
 
@@ -50,6 +52,7 @@ Server → client:
 | Event | Payload |
 |---|---|
 | `roundStarted` | `{ roundIndex, title, timeLimitSeconds, serverNow, startedAt, endsAt, totalRounds, questions: [{ index, text, type, choices, imageUrl, imageType }] }` |
+| `roundTimer` | `{ roundIndex, timeLimitSeconds, countdown, serverNow, startedAt, endsAt }` (sent when a countdown starts or is cancelled; `timeLimitSeconds` is `null` again after a cancel. `roundStarted` and `roundState` carry the same fields) |
 | `roundSubmitted` | `{ roundIndex, success, message?, ended? }` (to the submitter, once per accepted submit) |
 | `roundProgress` | `{ roundIndex, submitted, total }`; the presenter also gets `submittedNames` |
 | `roundEnded` | `{ roundIndex, title, reason: 'presenter' \| 'timeout', isLastRound, totalRounds, questions: [{ index, text, type, choices, correctChoice, acceptedAnswers, ... }], standings: [{ rank, name, roundScore, totalScore }] }`; each player also gets `you: { answers, results, roundScore, totalScore, rank }` |

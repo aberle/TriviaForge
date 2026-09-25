@@ -2818,6 +2818,34 @@ io.on('connection', (socket) => {
     roundService.finalizeRound(roomCode, 'presenter');
   });
 
+  // Presenter sets a countdown on an untimed round: it ends by itself when the time is up
+  socket.on('startRoundCountdown', ({ roomCode, roundIndex, seconds }) => {
+    const room = roomService.liveRooms[roomCode];
+    if (!room || !roundService.isRoundMode(room)) return;
+
+    if (room.presenterId !== socket.id) {
+      socket.emit('roomError', 'Only the presenter can control rounds');
+      return;
+    }
+
+    const result = roundService.startCountdown(roomCode, room, roundIndex, seconds);
+    if (!result.ok) socket.emit('roomError', result.message);
+  });
+
+  // Presenter cancels that countdown: the round has no time limit again
+  socket.on('cancelRoundCountdown', ({ roomCode, roundIndex }) => {
+    const room = roomService.liveRooms[roomCode];
+    if (!room || !roundService.isRoundMode(room)) return;
+
+    if (room.presenterId !== socket.id) {
+      socket.emit('roomError', 'Only the presenter can control rounds');
+      return;
+    }
+
+    const result = roundService.cancelCountdown(roomCode, room, roundIndex);
+    if (!result.ok) socket.emit('roomError', result.message);
+  });
+
   // Player saves in-progress answers (no reply). Cheap in-memory write, but capped per socket.
   socket.on('saveRoundDraft', ({ roomCode, roundIndex, answers }) => {
     const room = roomService.liveRooms[roomCode];

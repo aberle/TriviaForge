@@ -20,6 +20,7 @@
  */
 
 import { gradeAnswer } from '../utils/grading.js';
+import { ROUND_CONSTRAINTS } from '../config/constants.js';
 
 const DEBUG_ENABLED = process.env.DEBUG_MODE === 'true';
 
@@ -79,6 +80,8 @@ class RoundService {
       current: null,
       startedAt: null,
       endsAt: null,
+      countdownSeconds: null, // an untimed round the presenter set a countdown on: how long it runs for
+      countdownStartedAt: null,
       completed: [],
       lastEndedIndex: null,
       lastEndedReason: null,
@@ -174,6 +177,8 @@ class RoundService {
     state.current = roundIndex;
     state.startedAt = Date.now();
     state.endsAt = round.timeLimitSeconds ? state.startedAt + round.timeLimitSeconds * 1000 : null;
+    state.countdownSeconds = null;
+    state.countdownStartedAt = null;
     state.drafts = {};
     state.submitted = {};
     state.submittedAnswers = {};
@@ -187,6 +192,70 @@ class RoundService {
     this.emitProgress(roomCode, room);
 
     if (DEBUG_ENABLED) console.log(`[Rounds] Room ${roomCode} started round ${roundIndex} (${round.title})`);
+    return { ok: true };
+  }
+
+  /**
+   * Start a countdown on the open round if it has no time limit: it ends by itself when the time is
+   * up, like a timed round (players' unsent answers are submitted). Presenter action.
+   * @param {string} roomCode - Room code
+   * @param {object} room - Live room
+   * @param {number} roundIndex - The round the presenter is looking at
+   * @param {number} seconds - How long the countdown runs
+   * @returns {{ok: boolean, message?: string}}
+   */
+  startCountdown(roomCode, room, roundIndex, seconds) {
+    const state = room.rounds;
+    if (!this.isRoundMode(room) || state.phase !== 'open' || roundIndex !== state.current) {
+      return { ok: false, message: 'That round is not open' };
+    }
+    if (room.quizData.rounds[state.current].timeLimitSeconds) {
+      return { ok: false, message: 'This round already has a time limit' };
+    }
+    if (state.countdownSeconds) return { ok: false, message: 'A countdown is already running' };
+    if (
+      !Number.isInteger(seconds) ||
+      seconds < ROUND_CONSTRAINTS.MIN_TIME_LIMIT_SECONDS ||
+      seconds > ROUND_CONSTRAINTS.MAX_TIME_LIMIT_SECONDS
+    ) {
+      return {
+        ok: false,
+        message: `A countdown must be between ${ROUND_CONSTRAINTS.MIN_TIME_LIMIT_SECONDS} and ${ROUND_CONSTRAINTS.MAX_TIME_LIMIT_SECONDS} seconds`,
+      };
+    }
+
+    state.countdownSeconds = seconds;
+    state.countdownStartedAt = Date.now();
+    state.endsAt = state.countdownStartedAt + seconds * 1000;
+    room.lastActivityAt = Date.now();
+    this._armTimer(roomCode, roundIndex, seconds * 1000 + TIMER_GRACE_MS);
+
+    this.io.to(roomCode).emit('roundTimer', this.buildTimerPayload(room));
+    if (DEBUG_ENABLED) console.log(`[Rounds] Room ${roomCode} round ${roundIndex} countdown started (${seconds}s)`);
+    return { ok: true };
+  }
+
+  /**
+   * Cancel a presenter countdown: the round goes back to having no time limit.
+   * @param {string} roomCode - Room code
+   * @param {object} room - Live room
+   * @param {number} roundIndex - The round the presenter is looking at
+   * @returns {{ok: boolean, message?: string}}
+   */
+  cancelCountdown(roomCode, room, roundIndex) {
+    const state = room.rounds;
+    if (!this.isRoundMode(room) || state.phase !== 'open' || roundIndex !== state.current || !state.countdownSeconds) {
+      return { ok: false, message: 'There is no countdown to cancel' };
+    }
+
+    this._clearTimer(roomCode);
+    state.countdownSeconds = null;
+    state.countdownStartedAt = null;
+    state.endsAt = null;
+    room.lastActivityAt = Date.now();
+
+    this.io.to(roomCode).emit('roundTimer', this.buildTimerPayload(room));
+    if (DEBUG_ENABLED) console.log(`[Rounds] Room ${roomCode} round ${roundIndex} countdown cancelled`);
     return { ok: true };
   }
 
@@ -275,6 +344,8 @@ class RoundService {
     state.current = null;
     state.startedAt = null;
     state.endsAt = null;
+    state.countdownSeconds = null;
+    state.countdownStartedAt = null;
     state.drafts = {};
     state.submitted = {};
     state.submittedAnswers = {};
@@ -380,6 +451,26 @@ class RoundService {
   // ---- Payload builders ----
 
   /**
+   * How the open round is timed. A timed round counts down from when it started; an untimed round
+   * the presenter set a countdown on counts down from when the countdown started (`countdown: true`).
+   * `serverNow` lets clients correct for clock skew when counting down to `endsAt`.
+   * @param {object} room - Live room
+   * @returns {object}
+   */
+  buildTimerPayload(room) {
+    const state = room.rounds;
+    const round = room.quizData.rounds[state.current];
+    return {
+      roundIndex: round.index,
+      timeLimitSeconds: round.timeLimitSeconds || state.countdownSeconds || null,
+      countdown: !!state.countdownSeconds,
+      serverNow: Date.now(),
+      startedAt: state.countdownStartedAt ?? state.startedAt,
+      endsAt: state.endsAt,
+    };
+  }
+
+  /**
    * The `roundStarted` payload: the open round's questions, sanitized for players.
    * `serverNow` lets clients correct for clock skew when counting down to `endsAt`.
    * @param {object} room - Live room
@@ -391,10 +482,7 @@ class RoundService {
     return {
       roundIndex: round.index,
       title: round.title,
-      timeLimitSeconds: round.timeLimitSeconds,
-      serverNow: Date.now(),
-      startedAt: state.startedAt,
-      endsAt: state.endsAt,
+      ...this.buildTimerPayload(room),
       totalRounds: room.quizData.rounds.length,
       questions: round.questionIndexes.map((globalIdx) => ({
         index: globalIdx,

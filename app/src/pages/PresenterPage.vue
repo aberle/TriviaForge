@@ -47,6 +47,8 @@
         @startRound="startRound"
         @endRound="endRound"
         @completeQuiz="completeQuiz"
+        @startCountdown="startRoundCountdown"
+        @cancelCountdown="cancelRoundCountdown"
       />
       <QuizDisplay
         v-else
@@ -571,6 +573,17 @@ const endRound = async () => {
     if (!confirmed) return
   }
   socket.emit('endRound', { roomCode: currentRoomCode.value, roundIndex: roundCurrent.value?.roundIndex })
+}
+
+// Start (or cancel) a countdown that ends an untimed round by itself
+const startRoundCountdown = (seconds) => {
+  if (!currentRoomCode.value) return
+  socket.emit('startRoundCountdown', { roomCode: currentRoomCode.value, roundIndex: roundCurrent.value?.roundIndex, seconds })
+}
+
+const cancelRoundCountdown = () => {
+  if (!currentRoomCode.value) return
+  socket.emit('cancelRoundCountdown', { roomCode: currentRoomCode.value, roundIndex: roundCurrent.value?.roundIndex })
 }
 
 // Complete quiz

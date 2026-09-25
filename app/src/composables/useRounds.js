@@ -11,7 +11,7 @@ import { ref, computed } from 'vue'
  * roundProgress, roundEnded and roundSubmitted (the player's submit acknowledgement).
  */
 
-const ROUND_EVENTS = ['roundState', 'roundStarted', 'roundProgress', 'roundEnded', 'roundSubmitted']
+const ROUND_EVENTS = ['roundState', 'roundStarted', 'roundProgress', 'roundEnded', 'roundSubmitted', 'roundTimer']
 
 export function useRounds(socket) {
   const rounds = ref([]) // [{ index, title, questionCount, questionIndexes, timeLimitSeconds }]
@@ -70,6 +70,13 @@ export function useRounds(socket) {
     submitMessage.value = ''
   }
 
+  // The presenter started (or cancelled) a countdown on the open round: it now has a time limit
+  // (or no longer has one). Everything else about the round, including answers, is left alone.
+  const onTimer = (payload) => {
+    if (!current.value || current.value.roundIndex !== payload.roundIndex) return
+    current.value = withClientTime({ ...current.value, ...payload })
+  }
+
   const onProgress = (payload) => {
     progress.value = payload
   }
@@ -115,6 +122,7 @@ export function useRounds(socket) {
     socket.on('roundProgress', onProgress)
     socket.on('roundEnded', onEnded)
     socket.on('roundSubmitted', onSubmitted)
+    socket.on('roundTimer', onTimer)
   }
 
   const reset = () => {

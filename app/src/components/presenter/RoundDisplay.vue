@@ -37,7 +37,23 @@
           :duration="current.timeLimitSeconds"
           :active="true"
         />
-        <p v-else class="rd-hint"><AppIcon name="clock" size="sm" /> Untimed round. End it when players have submitted.</p>
+        <p v-else class="rd-hint"><AppIcon name="clock" size="sm" /> Untimed round. End it when players have submitted, or start a countdown that ends it for you.</p>
+
+        <!-- Untimed rounds: the presenter can start a countdown that ends the round when it runs out -->
+        <div v-if="!current.timeLimitSeconds" class="rd-countdown-controls">
+          <span class="rd-countdown-label">Auto-end in:</span>
+          <Button v-for="preset in COUNTDOWN_PRESETS" :key="preset" variant="secondary" size="small" @click="$emit('startCountdown', preset)">
+            {{ formatTime(preset) }}
+          </Button>
+          <form class="rd-countdown-custom" @submit.prevent="startCustomCountdown">
+            <input v-model.number="customSeconds" type="number" min="10" max="3600" placeholder="seconds" aria-label="Custom countdown in seconds" />
+            <Button type="submit" variant="secondary" size="small" :disabled="!customSecondsValid">Start</Button>
+          </form>
+        </div>
+        <div v-else-if="current.countdown" class="rd-countdown-controls">
+          <span class="rd-countdown-label"><AppIcon name="timer" size="sm" /> The round ends by itself when the countdown reaches zero.</span>
+          <Button variant="secondary" size="small" @click="$emit('cancelCountdown')">Cancel countdown</Button>
+        </div>
 
         <div class="rd-progress">
           <div class="rd-progress-text">
@@ -112,7 +128,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import AppIcon from '@/components/common/AppIcon.vue';
 import Button from '@/components/common/Button.vue';
 import CountdownTimer from '@/components/player/CountdownTimer.vue';
@@ -140,7 +156,17 @@ const props = defineProps({
   quizCompleted: { type: Boolean, default: false }
 });
 
-defineEmits(['startRound', 'endRound', 'completeQuiz']);
+const emit = defineEmits(['startRound', 'endRound', 'completeQuiz', 'startCountdown', 'cancelCountdown']);
+
+// Countdowns the presenter can start on an untimed round (seconds), or type their own
+const COUNTDOWN_PRESETS = [30, 60, 120, 300];
+const customSeconds = ref(null);
+const customSecondsValid = computed(() => Number.isInteger(customSeconds.value) && customSeconds.value >= 10 && customSeconds.value <= 3600);
+const startCustomCountdown = () => {
+  if (!customSecondsValid.value) return;
+  emit('startCountdown', customSeconds.value);
+  customSeconds.value = null;
+};
 
 const submittedCount = computed(() => props.progress?.submitted ?? 0);
 const totalCount = computed(() => props.progress?.total ?? 0);
@@ -238,6 +264,33 @@ const formatTime = (seconds) => {
   margin: 0;
   color: var(--text-secondary);
   font-size: 0.9rem;
+}
+
+.rd-countdown-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rd-countdown-label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.rd-countdown-custom {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rd-countdown-custom input {
+  width: 6.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-overlay-10);
+  color: var(--text-primary);
 }
 
 .rd-progress {
