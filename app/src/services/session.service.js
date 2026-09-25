@@ -10,6 +10,7 @@
 import { getClient, query } from '../config/database.js';
 import { env } from '../config/environment.js';
 import { matchShortAnswer } from '../utils/similarity.js';
+import { isAnswerCorrect } from '../utils/grading.js';
 
 /**
  * SessionService - Manages session persistence and auto-save
@@ -119,24 +120,13 @@ class SessionService {
         // Skip spectators from database saves
         if (player.isSpectator) continue;
 
-        // Compute player's correct answer count
+        // Compute player's correct answer count (the presenter's overrides count like any grade)
         let playerScore = 0;
         if (player.answers && room.quizData && room.quizData.questions) {
-          for (const [qIdx, answer] of Object.entries(player.answers)) {
-            const question = room.quizData.questions[parseInt(qIdx)];
-            if (!question) continue;
-
-            if (question.type === 'short_answer') {
-              if (
-                answer !== undefined &&
-                answer !== '' &&
-                matchShortAnswer(answer, question.acceptedAnswers || [], shortAnswerThreshold).isCorrect
-              ) {
-                playerScore++;
-              }
-            } else if (answer === question.correctChoice) {
-              playerScore++;
-            }
+          for (const qIdxStr of Object.keys(player.answers)) {
+            const qIdx = parseInt(qIdxStr);
+            if (!room.quizData.questions[qIdx]) continue;
+            if (isAnswerCorrect(room, player, qIdx, shortAnswerThreshold)) playerScore++;
           }
         }
 
@@ -238,16 +228,18 @@ class SessionService {
               if (answer === undefined || answer === '') continue;
 
               const match = matchShortAnswer(answer, question.acceptedAnswers || [], shortAnswerThreshold);
+              const isCorrect = isAnswerCorrect(room, player, questionIndex, shortAnswerThreshold);
 
+              // An answer is stored once; only its grade can change later (a presenter override)
               await client.query(
                 `
                 INSERT INTO participant_answers (
                   participant_id, question_id, answer_id, answer_text, is_correct, answered_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (participant_id, question_id) DO NOTHING
+                ON CONFLICT (participant_id, question_id) DO UPDATE SET is_correct = EXCLUDED.is_correct
               `,
-                [participantId, question.id, match.matchedAnswerId, answer, match.isCorrect, new Date()]
+                [participantId, question.id, match.matchedAnswerId, answer, isCorrect, new Date()]
               );
               continue;
             }
@@ -271,9 +263,9 @@ class SessionService {
                   participant_id, question_id, answer_id, is_correct, answered_at
                 )
                 VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (participant_id, question_id) DO NOTHING
+                ON CONFLICT (participant_id, question_id) DO UPDATE SET is_correct = EXCLUDED.is_correct
               `,
-                [participantId, question.id, matchedAnswer.id, matchedAnswer.is_correct, new Date()]
+                [participantId, question.id, matchedAnswer.id, isAnswerCorrect(room, player, questionIndex, shortAnswerThreshold), new Date()]
               );
             }
           }

@@ -81,6 +81,10 @@ TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 | `legacy-live-game` | A quiz without rounds plays as before; short answers graded; rejoining a completed room (sockets only) |
 | `resume-session` | Resuming a saved session reuses its original room code and session (no duplicate), players rejoin with their answers, resuming a live session points at its room, and a new room is never given a saved session's room code (sockets only) |
 | `question-bank` | Saving a quiz does not copy questions into the bank: unchanged questions keep their row and tags, edited/removed played questions leave the bank (kept only as history), and questions shared with another quiz survive (API only) |
+| `answer-override` | Settling a dispute: a grade can be changed to correct or wrong (presenter only), and counts everywhere (scores, standings, results, saved session, resume) without players being told (sockets and API only) |
+| `answer-override-ui` | The Mark correct / Mark wrong buttons in Live Standings, and the player's screen updating live without disturbing an open round |
+| `round-countdown` | A countdown on an untimed round: presets, cancel, refresh, auto-end with unsent answers submitted, not offered on timed rounds |
+| `excel-import` | Importing a quiz from Excel with rounds (the sample file, grouping, time limits, bad files), a file without rounds, and the template (API only) |
 | `use-rounds-composable` | The client `useRounds` composable against real sockets (no browser) |
 
 Shared plumbing is in `e2e/lib/`: `harness.js` (suite runner, quiz/room/bot/page helpers, cleanup),

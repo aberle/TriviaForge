@@ -453,7 +453,10 @@ If you're running a fresh install with no existing data, skip all of this — Po
    - Column A: Question text
    - Columns B-K: Answer choices (2-10 choices)
    - Column L: Correct answer index (0-9)
+   - Column M (optional): the round the question belongs to. If any question has a round, all must. Add a second sheet named `Rounds` (title in column A, time limit in seconds in column B, blank = untimed) to set the order and time limits of the rounds
 3. Upload the completed Excel file
+
+A ready-made round quiz to try is in [app/testing/samples/round-quiz-sample.xlsx](app/testing/samples/round-quiz-sample.xlsx) (13 questions in three rounds: 60 s, untimed and 90 s).
 4. Review and save the imported quiz
 
 <!-- Screenshot Placeholder: Quiz Creation -->

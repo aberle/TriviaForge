@@ -434,6 +434,11 @@ export async function getSession(req, res, next) {
         roundOrder: row.round_order, // 1-based round this question was played in; null without rounds
       };
 
+      // Who got it right, as graded when it was saved (includes any grade the presenter changed by hand)
+
+      question.answerCorrectness = shortAnswerCorrectnessByQuestion.get(row.question_id) || {};
+
+
       if (type === 'short_answer') {
         question.acceptedAnswers = answersResult.rows.map((a) => ({
           id: a.id,
@@ -712,6 +717,11 @@ async function getFullSessionData(sessionId) {
       correctChoice,
       roundOrder: row.round_order, // 1-based round this question was played in; null without rounds
     };
+
+    // Who got it right, as graded when it was saved (includes any grade the presenter changed by hand)
+
+    question.answerCorrectness = shortAnswerCorrectnessByQuestion.get(row.question_id) || {};
+
 
     if (type === 'short_answer') {
       question.acceptedAnswers = answersResult.rows.map((a) => ({

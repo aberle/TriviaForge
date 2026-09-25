@@ -72,7 +72,7 @@ export function generateCSV(sessionData) {
       const answer = player.answers[qIdx];
       if (answer === undefined || answer === '') {
         unansweredCount++;
-      } else if (isShortAnswer ? question.shortAnswerCorrectness?.[player.name] : answer === question.correctChoice) {
+      } else if (question.answerCorrectness?.[player.name] ?? (isShortAnswer ? question.shortAnswerCorrectness?.[player.name] : answer === question.correctChoice)) {
         correctCount++;
       } else {
         incorrectCount++;

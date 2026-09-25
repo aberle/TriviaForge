@@ -41,7 +41,7 @@ import { autoModeService } from './src/services/autoMode.service.js';
 import { initializeAdminPassword } from './src/services/startup.service.js';
 import { isDisplayNameBanned } from './src/services/player.service.js';
 import { matchShortAnswer } from './src/utils/similarity.js';
-import { gradeAnswer } from './src/utils/grading.js';
+import { gradeAnswer, isAnswerCorrect } from './src/utils/grading.js';
 import { roundService } from './src/services/round.service.js';
 
 // --------------------
@@ -325,10 +325,9 @@ const buildQuizResults = (room) => {
       const answers = p.answers || {};
       const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
       let correct = 0;
-      for (const [qIdx, choice] of Object.entries(answers)) {
-        const question = room.quizData.questions[parseInt(qIdx)];
-        // gradeAnswer also handles short-answer questions, which never equal correctChoice (-1)
-        if (question && gradeAnswer(question, choice, threshold)) {
+      for (const qIdx of Object.keys(answers)) {
+        // isAnswerCorrect also handles short answers and the presenter's overrides
+        if (room.quizData.questions[parseInt(qIdx)] && isAnswerCorrect(room, p, parseInt(qIdx), threshold)) {
           correct++;
         }
       }
@@ -847,12 +846,7 @@ app.get('/api/player/progress/:roomCode', async (req, res) => {
       // Determine if answer was correct (only if revealed)
       let isCorrect = false;
       if (wasRevealed && playerChoice !== null) {
-        if (question.type === 'short_answer') {
-          const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
-          isCorrect = matchShortAnswer(playerChoice, question.acceptedAnswers || [], threshold).isCorrect;
-        } else {
-          isCorrect = playerChoice === question.correctChoice;
-        }
+        isCorrect = isAnswerCorrect(room, player, index, quizOptions.shortAnswerMatchThreshold ?? 0.85);
       }
 
       progress.questionHistory.push({
@@ -906,7 +900,7 @@ app.get('/api/room/progress/:roomCode', requireAdmin, async (req, res) => {
           if (!question || answer === null) return;
 
           answeredCount++;
-          results[questionIndex] = gradeAnswer(question, answer, threshold);
+          results[questionIndex] = isAnswerCorrect(room, player, questionIndex, threshold);
           if (results[questionIndex]) correctCount++;
         });
 
@@ -918,7 +912,9 @@ app.get('/api/room/progress/:roomCode', requireAdmin, async (req, res) => {
           answered: answeredCount,
           connected: player.connected,
           answers: player.answers || {},
-          results
+          results,
+          // Grades the presenter changed by hand: { [questionIndex]: true | false } (what it was set to)
+          overridden: room.answerOverrides?.[player.username] || {}
         };
       });
 
@@ -1833,7 +1829,8 @@ io.on('connection', (socket) => {
           pa.question_id,
           sq.presentation_order,
           a.display_order as choice_index,
-          pa.answer_text
+          pa.answer_text,
+          pa.is_correct
         FROM game_participants gp
         JOIN users u ON gp.user_id = u.id
         LEFT JOIN participant_answers pa ON gp.id = pa.participant_id
@@ -1845,6 +1842,7 @@ io.on('connection', (socket) => {
 
       // Reconstruct players from database data (keyed by username for matching)
       const playersMap = new Map();
+      const storedGrades = {}; // { [username]: { [questionIndex]: is_correct as saved } }
       for (const row of participantsResult.rows) {
         if (!playersMap.has(row.username)) {
           const playerId = `temp_${row.username}`;
@@ -1868,6 +1866,24 @@ io.on('connection', (socket) => {
           playersMap.get(row.username).answers[row.presentation_order] = row.answer_text;
         } else if (row.presentation_order !== null && row.choice_index !== null) {
           playersMap.get(row.username).answers[row.presentation_order] = row.choice_index;
+        }
+        if (row.presentation_order !== null && row.is_correct !== null) {
+          storedGrades[row.username] = storedGrades[row.username] || {};
+          storedGrades[row.username][row.presentation_order] = row.is_correct;
+        }
+      }
+
+      // A saved grade that differs from what the grader says now is one the presenter changed by hand
+      const answerOverrides = {};
+      for (const [username, grades] of Object.entries(storedGrades)) {
+        const answers = playersMap.get(username)?.answers || {};
+        for (const [qIdx, stored] of Object.entries(grades)) {
+          const question = quizData.questions[parseInt(qIdx)];
+          if (!question || answers[qIdx] === undefined) continue;
+          if (gradeAnswer(question, answers[qIdx], quizOptions.shortAnswerMatchThreshold ?? 0.85) !== stored) {
+            answerOverrides[username] = answerOverrides[username] || {};
+            answerOverrides[username][qIdx] = stored;
+          }
         }
       }
 
@@ -1909,6 +1925,7 @@ io.on('connection', (socket) => {
         currentQuestionIndex,
         presentedQuestions,
         revealedQuestions,
+        answerOverrides, // grades the presenter changed by hand
         kickedPlayers: {}, // { username: kickedTimestamp }
         status: 'in_progress',
         createdAt: session.created_at,
@@ -2416,12 +2433,7 @@ io.on('connection', (socket) => {
 
         let isCorrect = null;
         if (isRevealed) {
-          if (question.type === 'short_answer') {
-            const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
-            isCorrect = matchShortAnswer(choice, question.acceptedAnswers || [], threshold).isCorrect;
-          } else {
-            isCorrect = choice === question.correctChoice;
-          }
+          isCorrect = isAnswerCorrect(room, room.players[socket.id], idx, quizOptions.shortAnswerMatchThreshold ?? 0.85);
         }
 
         const historyItem = {
@@ -2844,6 +2856,51 @@ io.on('connection', (socket) => {
 
     const result = roundService.cancelCountdown(roomCode, room, roundIndex);
     if (!result.ok) socket.emit('roomError', result.message);
+  });
+
+  // Presenter settles a dispute: counts a player's answer to a finished question as correct (or as
+  // wrong). From then on it counts exactly like that everywhere: scores, standings, the player's
+  // own results, the final results and the saved session. Nothing tells the players it was changed.
+  socket.on('overrideAnswer', async ({ roomCode, username, questionIndex, correct }) => {
+    const room = roomService.liveRooms[roomCode];
+    if (!room) return;
+
+    if (room.presenterId !== socket.id) {
+      socket.emit('overrideRejected', { message: 'Only the presenter can change a grade' });
+      return;
+    }
+    const reject = (message) => socket.emit('overrideRejected', { message });
+
+    if (!roundService.isRoundMode(room)) return reject('Grades can only be changed in a quiz with rounds');
+    if (room.status === 'completed') return reject('The quiz is completed, so its results can no longer be changed');
+    if (typeof correct !== 'boolean' || !Number.isInteger(questionIndex)) return reject('Invalid request');
+    if (!(room.revealedQuestions || []).includes(questionIndex)) return reject('That question has not finished yet');
+
+    const player = Object.values(room.players).find((p) => !p.isSpectator && p.username === username);
+    if (!player) return reject('Player not found');
+    if (player.answers?.[questionIndex] === undefined) return reject('That player did not answer this question');
+
+    // Only differences from the automatic grade are kept: setting it back to what the grader said clears it
+    const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
+    const automatic = gradeAnswer(room.quizData.questions[questionIndex], player.answers[questionIndex], threshold);
+    room.answerOverrides = room.answerOverrides || {};
+    room.answerOverrides[username] = room.answerOverrides[username] || {};
+    if (correct === automatic) {
+      delete room.answerOverrides[username][questionIndex];
+      if (Object.keys(room.answerOverrides[username]).length === 0) delete room.answerOverrides[username];
+    } else {
+      room.answerOverrides[username][questionIndex] = correct;
+    }
+    room.lastActivityAt = Date.now();
+
+    roundService.emitResultsUpdate(roomCode, room);
+    socket.emit('answerOverridden', { username, questionIndex, correct });
+
+    try {
+      await saveSession(roomCode, room);
+    } catch (err) {
+      console.error(`[OVERRIDE] Could not save room ${roomCode}:`, err.message);
+    }
   });
 
   // Player saves in-progress answers (no reply). Cheap in-memory write, but capped per socket.

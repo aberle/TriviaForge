@@ -117,6 +117,17 @@
                       <em class="no-answer">No answer</em>
                     </template>
                   </span>
+                  <!-- Settle a dispute: change whether this answer counts (players are not told) -->
+                  <template v-if="canOverride && revealedQuestions.includes(qIdx) && player.answers && player.answers[qIdx] !== undefined">
+                    <span v-if="player.overridden && player.overridden[qIdx] !== undefined" class="override-tag" title="You changed this grade by hand">edited</span>
+                    <button
+                      class="override-btn"
+                      :title="isCorrect(player, qIdx) ? 'Count this answer as wrong' : 'Count this answer as correct'"
+                      @click="$emit('overrideAnswer', { username: player.username, questionIndex: qIdx, correct: !isCorrect(player, qIdx) })"
+                    >
+                      {{ isCorrect(player, qIdx) ? 'Mark wrong' : 'Mark correct' }}
+                    </button>
+                  </template>
                 </div>
               </div>
             </div>
@@ -146,10 +157,12 @@ const props = defineProps({
   revealedQuestions: { type: Array, default: () => [] },
   presentedQuestions: { type: Array, default: () => [] },
   // Questions of a round that is open right now (round quizzes)
-  inProgressQuestions: { type: Array, default: () => [] }
+  inProgressQuestions: { type: Array, default: () => [] },
+  // The presenter may change how an answer is graded (round quizzes, until the quiz is completed)
+  canOverride: { type: Boolean, default: false }
 })
 
-defineEmits(['close'])
+defineEmits(['close', 'overrideAnswer'])
 
 // Expanded questions state (local to modal)
 const expandedQuestions = ref(new Set())
@@ -226,6 +239,31 @@ const getMedalClass = (idx) => {
 </script>
 
 <style scoped>
+.override-btn {
+  margin-left: auto;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.override-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--info-light);
+}
+
+.override-tag {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  border-radius: 999px;
+  background: var(--warning-bg-20);
+  color: var(--warning-light);
+}
+
 .progress-modal-content {
   max-height: 70vh;
   overflow-y: auto;

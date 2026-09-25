@@ -306,7 +306,7 @@ function drawSummaryPage(doc, sessionData) {
         const ans = p.answers[qi];
         if (ans !== undefined && ans !== '') {
           total++;
-          const isCorrect = q.type === 'short_answer' ? q.shortAnswerCorrectness?.[p.name] : ans === q.correctChoice;
+          const isCorrect = q.answerCorrectness?.[p.name] ?? (q.type === 'short_answer' ? q.shortAnswerCorrectness?.[p.name] : ans === q.correctChoice);
           if (isCorrect) correct++;
         }
       });
@@ -431,7 +431,7 @@ async function drawQuestionPages(doc, sessionData) {
       if (ans === undefined || ans === '') {
         unanswered++;
       } else {
-        const isCorrect = q.type === 'short_answer' ? q.shortAnswerCorrectness?.[p.name] : ans === q.correctChoice;
+        const isCorrect = q.answerCorrectness?.[p.name] ?? (q.type === 'short_answer' ? q.shortAnswerCorrectness?.[p.name] : ans === q.correctChoice);
         if (isCorrect) correct++; else incorrect++;
       }
     });
@@ -471,7 +471,7 @@ async function drawQuestionPages(doc, sessionData) {
     const isCorrectFor = (player) => {
       const ans = player.answers[qi];
       if (ans === undefined || ans === '') return false;
-      return q.type === 'short_answer' ? !!q.shortAnswerCorrectness?.[player.name] : ans === q.correctChoice;
+      return !!(q.answerCorrectness?.[player.name] ?? (q.type === 'short_answer' ? q.shortAnswerCorrectness?.[player.name] : ans === q.correctChoice));
     };
 
     const sorted = [...sessionData.playerResults].sort((a, b) => {

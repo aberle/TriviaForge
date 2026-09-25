@@ -17,6 +17,7 @@ import {
 } from '../utils/errors.js';
 import { sendSuccess } from '../utils/responses.js';
 import { validateRounds } from '../utils/validators.js';
+import { ROUND_CONSTRAINTS } from '../config/constants.js';
 
 // Ensure uploads directory exists on startup
 const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'questions');
@@ -732,10 +733,11 @@ export async function downloadTemplate(req, res, next) {
       '8',
       '9',
       '← Use these numbers',
+      'Round title, if the quiz has rounds',
     ];
     indexRow.font = { bold: true, color: { argb: 'FF666666' } };
     indexRow.alignment = { horizontal: 'center' };
-    for (let col = 1; col <= 12; col++) {
+    for (let col = 1; col <= 13; col++) {
       const cell = worksheet.getCell(4, col);
       cell.fill = {
         type: 'pattern',
@@ -765,10 +767,11 @@ export async function downloadTemplate(req, res, next) {
       'Choice I',
       'Choice J',
       'Correct Answer (0-based index)',
+      'Round (optional)',
     ];
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }; // White text
     headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-    for (let col = 1; col <= 12; col++) {
+    for (let col = 1; col <= 13; col++) {
       const cell = worksheet.getCell(5, col);
       cell.fill = {
         type: 'pattern',
@@ -822,7 +825,7 @@ export async function downloadTemplate(req, res, next) {
       row.values = sampleData[i];
 
       // Style each cell in the sample rows
-      for (let col = 1; col <= 12; col++) {
+      for (let col = 1; col <= 13; col++) {
         const cell = worksheet.getCell(6 + i, col);
         cell.fill = {
           type: 'pattern',
@@ -843,6 +846,23 @@ export async function downloadTemplate(req, res, next) {
       }
     }
 
+    worksheet.getColumn(13).width = 34;
+
+    // Optional second sheet: the rounds, in order, with their time limits. Questions name their round
+    // in the "Round (optional)" column; leave both blank for a quiz without rounds.
+    const roundsSheet = workbook.addWorksheet('Rounds');
+    roundsSheet.getRow(1).values = ['Round Title', 'Time Limit (seconds, blank = untimed)'];
+    roundsSheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    for (let col = 1; col <= 2; col++) {
+      roundsSheet.getCell(1, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+    }
+    roundsSheet.getRow(2).values = ['(Example) Warm-up', 60];
+    roundsSheet.getRow(2).font = { italic: true, color: { argb: 'FF888888' } };
+    roundsSheet.getRow(3).values = [`Delete the example row. Time limits are ${ROUND_CONSTRAINTS.MIN_TIME_LIMIT_SECONDS}-${ROUND_CONSTRAINTS.MAX_TIME_LIMIT_SECONDS} seconds.`];
+    roundsSheet.getRow(3).font = { italic: true, color: { argb: 'FF888888' } };
+    roundsSheet.getColumn(1).width = 30;
+    roundsSheet.getColumn(2).width = 38;
+
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer();
 
@@ -856,6 +876,89 @@ export async function downloadTemplate(req, res, next) {
   } catch (err) {
     next(err);
   }
+}
+
+/**
+ * Helper: the text of an Excel cell (plain values and rich text both arrive as something printable).
+ */
+function cellText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    if (Array.isArray(value.richText)) return value.richText.map((part) => part.text).join('').trim();
+    if (value.text !== undefined) return String(value.text).trim();
+    if (value.result !== undefined) return String(value.result).trim();
+  }
+  return String(value).trim();
+}
+
+/**
+ * Helper: work out the rounds of an imported quiz. Each question can name its round in the optional
+ * "Round" column; an optional second sheet named "Rounds" lists the rounds in order with their time
+ * limits (seconds, blank = untimed). Rounds appear in the order of that sheet, then in the order they
+ * are first used, and questions are grouped by round (keeping their order inside a round).
+ *
+ * Throws a 400 for a mix of questions with and without a round, or a bad time limit.
+ *
+ * @param {Object} workbook - The loaded ExcelJS workbook
+ * @param {Array<{roundTitle: string, rowIndex: number}>} questions - Parsed questions (grouped in place)
+ * @returns {Array<{title: string, timeLimitSeconds: number|null}>} Rounds ([] when the quiz has none)
+ */
+function readImportRounds(workbook, questions) {
+  if (!questions.some((q) => q.roundTitle)) return [];
+
+  const missing = questions.find((q) => !q.roundTitle);
+  if (missing) {
+    throw new BadRequestError(
+      `Row ${missing.rowIndex} has no round. When any question has a round, every question needs one.`
+    );
+  }
+
+  const rounds = [];
+  const indexOf = (title) => rounds.findIndex((r) => r.title.toLowerCase() === title.toLowerCase());
+
+  // The optional "Rounds" sheet: title + time limit, one round per row (after the header row)
+  const sheet = workbook.getWorksheet('Rounds');
+  if (sheet) {
+    sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      if (rowNumber === 1) return; // header
+      const title = cellText(row.getCell(1).value);
+      if (!title || indexOf(title) !== -1) return;
+
+      const rawLimit = cellText(row.getCell(2).value);
+      let timeLimitSeconds = null;
+      if (rawLimit !== '') {
+        timeLimitSeconds = Number(rawLimit);
+        if (
+          !Number.isInteger(timeLimitSeconds) ||
+          timeLimitSeconds < ROUND_CONSTRAINTS.MIN_TIME_LIMIT_SECONDS ||
+          timeLimitSeconds > ROUND_CONSTRAINTS.MAX_TIME_LIMIT_SECONDS
+        ) {
+          throw new BadRequestError(
+            `Rounds sheet, row ${rowNumber}: the time limit must be blank or ${ROUND_CONSTRAINTS.MIN_TIME_LIMIT_SECONDS}-${ROUND_CONSTRAINTS.MAX_TIME_LIMIT_SECONDS} seconds`
+          );
+        }
+      }
+      rounds.push({ title, timeLimitSeconds });
+    });
+  }
+
+  // Rounds named only in the question rows are untimed
+  for (const q of questions) {
+    if (indexOf(q.roundTitle) === -1) rounds.push({ title: q.roundTitle, timeLimitSeconds: null });
+  }
+
+  questions.forEach((q) => {
+    q.roundIndex = indexOf(q.roundTitle);
+  });
+  questions.sort((a, b) => a.roundIndex - b.roundIndex); // stable: order inside a round is kept
+
+  // A round nobody uses would only be an empty round: leave it out
+  const used = [...new Set(questions.map((q) => q.roundIndex))].sort((a, b) => a - b);
+  const remap = new Map(used.map((oldIndex, newIndex) => [oldIndex, newIndex]));
+  questions.forEach((q) => {
+    q.roundIndex = remap.get(q.roundIndex);
+  });
+  return used.map((oldIndex) => rounds[oldIndex]);
 }
 
 /**
@@ -949,6 +1052,7 @@ export async function importQuiz(req, res, next) {
         text: questionText,
         choices: choices,
         correctChoice: correctChoice,
+        roundTitle: cellText(row[12]), // optional "Round" column
         rowIndex: rowIndex,
         id: `q_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
       });
@@ -957,6 +1061,10 @@ export async function importQuiz(req, res, next) {
     if (questions.length === 0) {
       throw new BadRequestError('No valid questions found in the file');
     }
+
+    // Rounds (optional): from the Round column and the Rounds sheet
+    const rounds = readImportRounds(workbook, questions);
+    assertValidRounds(rounds, questions);
 
     // If preview mode, return parsed questions without creating
     if (isPreview) {
@@ -969,8 +1077,10 @@ export async function importQuiz(req, res, next) {
           rowIndex: q.rowIndex,
           text: q.text,
           choices: q.choices,
-          correctChoice: q.correctChoice
+          correctChoice: q.correctChoice,
+          round: q.roundTitle || null
         })),
+        rounds,
         questionCount: questions.length,
       });
     }
@@ -987,6 +1097,7 @@ export async function importQuiz(req, res, next) {
         [title, description, userId]
       );
       const quizId = quizResult.rows[0].id;
+      const roundIds = await insertQuizRounds(client, quizId, rounds);
 
       // Track statistics
       let createdCount = 0;
@@ -1016,8 +1127,8 @@ export async function importQuiz(req, res, next) {
           if (existingCheck.rows.length > 0) {
             // Link existing question to quiz (skip if already linked)
             const insertResult = await client.query(
-              'INSERT INTO quiz_questions (quiz_id, question_id, question_order) VALUES ($1, $2, $3) ON CONFLICT (quiz_id, question_id) DO NOTHING RETURNING question_id',
-              [quizId, decision.existingQuestionId, questionOrder]
+              'INSERT INTO quiz_questions (quiz_id, question_id, question_order, round_id) VALUES ($1, $2, $3, $4) ON CONFLICT (quiz_id, question_id) DO NOTHING RETURNING question_id',
+              [quizId, decision.existingQuestionId, questionOrder, roundIds[q.roundIndex] ?? null]
             );
             if (insertResult.rows.length > 0) {
               questionOrder++;
@@ -1040,8 +1151,8 @@ export async function importQuiz(req, res, next) {
 
         // Link question to quiz
         await client.query(
-          'INSERT INTO quiz_questions (quiz_id, question_id, question_order) VALUES ($1, $2, $3)',
-          [quizId, questionId, questionOrder++]
+          'INSERT INTO quiz_questions (quiz_id, question_id, question_order, round_id) VALUES ($1, $2, $3, $4)',
+          [quizId, questionId, questionOrder++, roundIds[q.roundIndex] ?? null]
         );
 
         // Insert answers — for short_answer questions every entry is an accepted answer, so all are "correct"
@@ -1065,6 +1176,7 @@ export async function importQuiz(req, res, next) {
         id: quizId,
         title,
         questionCount: questionOrder - 1, // Total questions in quiz
+        roundCount: rounds.length,
         stats: {
           created: createdCount,
           linked: linkedCount,
@@ -1078,6 +1190,10 @@ export async function importQuiz(req, res, next) {
       client.release();
     }
   } catch (err) {
+    // Say what is wrong with the file: the admin page shows `error` (the default error page is HTML)
+    if (err instanceof BadRequestError) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
     next(err);
   }
 }

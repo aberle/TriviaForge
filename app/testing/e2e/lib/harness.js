@@ -112,7 +112,19 @@ async function adminSession() {
       body: body && JSON.stringify(body),
     });
 
-  return { token, user, request };
+  /** Upload a file as multipart form data (returns the fetch Response). */
+  const upload = (path, filename, buffer, { query = '', fields = {} } = {}) => {
+    const form = new FormData();
+    form.append('file', new Blob([buffer]), filename);
+    for (const [key, value] of Object.entries(fields)) form.append(key, value);
+    return fetch(`${BASE}${path}${query}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'x-csrf-token': csrfToken, Cookie: cookie },
+      body: form,
+    });
+  };
+
+  return { token, user, request, upload };
 }
 
 async function setup({ quiz, chrome: wantChrome }) {
@@ -136,6 +148,12 @@ async function setup({ quiz, chrome: wantChrome }) {
 
     /** Call the admin API as the logged-in admin (returns the fetch Response). */
     api: (method, path, body) => admin.request(method, path, body),
+
+    /** Have cleanup delete a quiz this test created some other way (e.g. by importing a file). */
+    trackQuiz: (id) => quizIds.push(id),
+
+    /** Upload a file to the admin API (multipart form data). */
+    upload: (path, filename, buffer, options) => admin.upload(path, filename, buffer, options),
 
     /** Create a quiz through the API. */
     async createQuiz({ title = `E2E ${uid()}`, description = 'created by an end-to-end test', rounds, questions }) {

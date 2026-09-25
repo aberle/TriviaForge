@@ -27,4 +27,21 @@ export function gradeAnswer(question, answer, threshold = 0.85) {
   return answer === question.correctChoice;
 }
 
-export default { gradeAnswer };
+/**
+ * Whether a player's answer to a question counts as correct in this room: the presenter may have
+ * overridden the grade (a dispute), in which case it counts exactly as they decided, everywhere.
+ * `room.answerOverrides` is { [username]: { [questionIndex]: boolean } }.
+ *
+ * @param {Object} room - Live room
+ * @param {Object} player - Room player entry (has `username` and `answers`)
+ * @param {number} questionIndex - Index into room.quizData.questions
+ * @param {number} [threshold=0.85] - Short-answer similarity threshold
+ * @returns {boolean}
+ */
+export function isAnswerCorrect(room, player, questionIndex, threshold = 0.85) {
+  const override = room.answerOverrides?.[player.username]?.[questionIndex];
+  if (typeof override === 'boolean') return override;
+  return gradeAnswer(room.quizData.questions[questionIndex], player.answers?.[questionIndex], threshold);
+}
+
+export default { gradeAnswer, isAnswerCorrect };

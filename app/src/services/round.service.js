@@ -19,7 +19,7 @@
  *   "end round" and the timer, so a timer expiry racing a submit can't double-finalize.
  */
 
-import { gradeAnswer } from '../utils/grading.js';
+import { isAnswerCorrect } from '../utils/grading.js';
 import { ROUND_CONSTRAINTS } from '../config/constants.js';
 
 const DEBUG_ENABLED = process.env.DEBUG_MODE === 'true';
@@ -533,23 +533,58 @@ class RoundService {
       if (isPresenter) snapshot.progress.submittedNames = this._namesFor(room, submittedUsernames);
     }
 
+    Object.assign(snapshot, this.buildResultsUpdate(room, { player, isPresenter }));
+
+    return snapshot;
+  }
+
+  /**
+   * The results part of the state: the last finished round (with this player's own result) and
+   * their results for every finished round. Sent in the snapshot, and on its own when a grade changes.
+   * @param {object} room - Live room
+   * @param {{player?: object|null, isPresenter?: boolean}} [options]
+   * @returns {{lastEnded: object|null, history?: object[]}}
+   */
+  buildResultsUpdate(room, { player = null, isPresenter = false } = {}) {
+    const state = room.rounds;
+    const rounds = room.quizData.rounds;
+    const update = { lastEnded: null };
+
     if (state.lastEndedIndex !== null) {
       const { base, rows } = this._buildEnded(room, state.lastEndedIndex, state.lastEndedReason || 'presenter');
       const hidden = !isPresenter && this._standingsHidden(room, base);
-      snapshot.lastEnded = hidden ? { ...base, standings: null } : base;
+      update.lastEnded = hidden ? { ...base, standings: null } : base;
       const row = player && rows.find((r) => r.socketId === player.id);
       if (row) {
-        snapshot.lastEnded = {
-          ...snapshot.lastEnded,
+        update.lastEnded = {
+          ...update.lastEnded,
           you: this._youFor(room, rounds[state.lastEndedIndex], row, { hideStanding: hidden }),
         };
       }
     }
 
     // A player's results for every finished round, for their Progress view after a rejoin
-    if (player) snapshot.history = this._historyFor(room, player);
+    if (player) update.history = this._historyFor(room, player);
+    return update;
+  }
 
-    return snapshot;
+  /**
+   * Tell everyone the results changed (the presenter overrode a grade): each player gets their own
+   * corrected results, the presenter the full standings, everyone else the public ones.
+   * @param {string} roomCode - Room code
+   * @param {object} room - Live room
+   */
+  emitResultsUpdate(roomCode, room) {
+    const players = Object.entries(room.players).filter(([, p]) => !p.isSpectator);
+    const excluded = players.map(([socketId]) => socketId);
+    if (room.presenterId) {
+      excluded.push(room.presenterId);
+      this.io.to(room.presenterId).emit('roundResults', this.buildResultsUpdate(room, { isPresenter: true }));
+    }
+    this.io.to(roomCode).except(excluded).emit('roundResults', this.buildResultsUpdate(room));
+    for (const [socketId, player] of players) {
+      this.io.to(socketId).emit('roundResults', this.buildResultsUpdate(room, { player: { ...player, id: socketId } }));
+    }
   }
 
   // ---- Internals ----
@@ -587,7 +622,7 @@ class RoundService {
       .filter(([, p]) => !p.isSpectator)
       .map(([socketId, p]) => {
         const score = (indexes) =>
-          indexes.reduce((sum, idx) => sum + (gradeAnswer(questions[idx], p.answers?.[idx], threshold) ? 1 : 0), 0);
+          indexes.reduce((sum, idx) => sum + (isAnswerCorrect(room, p, idx, threshold) ? 1 : 0), 0);
         return {
           socketId,
           name: p.name,
@@ -655,7 +690,7 @@ class RoundService {
         const round = rounds[roundIndex];
         const answers = round.questionIndexes.map((idx) => player.answers?.[idx] ?? null);
         const results = round.questionIndexes.map((idx, k) =>
-          answers[k] === null ? null : gradeAnswer(room.quizData.questions[idx], answers[k], threshold)
+          answers[k] === null ? null : isAnswerCorrect(room, player, idx, threshold)
         );
         return { roundIndex, title: round.title, questions: this._revealedQuestions(room, round), answers, results };
       });
@@ -675,7 +710,7 @@ class RoundService {
     const player = room.players[row.socketId];
     const answers = round.questionIndexes.map((idx) => player?.answers?.[idx] ?? null);
     const results = round.questionIndexes.map((idx, k) =>
-      answers[k] === null ? null : gradeAnswer(room.quizData.questions[idx], answers[k], threshold)
+      answers[k] === null ? null : isAnswerCorrect(room, player, idx, threshold)
     );
     return {
       answers,

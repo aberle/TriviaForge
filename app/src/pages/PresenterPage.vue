@@ -113,6 +113,8 @@
       :revealedQuestions="standingsRevealed"
       :presentedQuestions="standingsPresented"
       :inProgressQuestions="standingsInProgress"
+      :canOverride="roundMode && !quizCompleted"
+      @overrideAnswer="overrideAnswer"
       @close="showProgressModal = false"
     />
 
@@ -575,6 +577,12 @@ const endRound = async () => {
   socket.emit('endRound', { roomCode: currentRoomCode.value, roundIndex: roundCurrent.value?.roundIndex })
 }
 
+// Settle a dispute: count a player's answer to a finished question as correct (or wrong)
+const overrideAnswer = ({ username, questionIndex, correct }) => {
+  if (!currentRoomCode.value) return
+  socket.emit('overrideAnswer', { roomCode: currentRoomCode.value, username, questionIndex, correct })
+}
+
 // Start (or cancel) a countdown that ends an untimed round by itself
 const startRoundCountdown = (seconds) => {
   if (!currentRoomCode.value) return
@@ -909,6 +917,12 @@ const setupSocketListeners = () => {
 
   // Resuming a session that is already live: just open that room
   socketInstance.on('sessionAlreadyLive', ({ roomCode }) => viewRoom(roomCode))
+
+  // A grade was changed by hand: refresh Live Standings; or it was refused
+  socketInstance.on('answerOverridden', () => {
+    if (showProgressModal.value) fetchPresenterProgress()
+  })
+  socketInstance.on('overrideRejected', ({ message }) => showAlert(message, 'Grade Not Changed'))
 
   socketInstance.on('roomCreated', ({ roomCode, quizFilename, quizTitle, questions, rounds: serverRounds, quizCompleted: serverQuizCompleted, currentQuestionIndex: serverCurrentQuestionIndex, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, isResumed, originalRoomCode, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
     currentRoomCode.value = roomCode

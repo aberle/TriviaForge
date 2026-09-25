@@ -17,6 +17,8 @@ A quiz can be split into rounds. In a round, players see **every question at onc
 4. When a round ends, everyone sees the leaderboard, players also see their own results, and the display page shows the answers. Start the next round.
 5. After the last round, only you see the final standings. Players still see their own round result and answers, and the display shows the answers, but neither gets the leaderboard, rank or total until you click **Complete Quiz & Save** (which then shows the final podium and saves the session). The server withholds this data rather than just hiding it on screen.
 
+**Settling a dispute.** In Live Standings, every answer to a finished question has a **Mark correct** / **Mark wrong** button (round quizzes, until the quiz is completed). The answer then counts exactly that way everywhere, as if it had always been graded like that: scores, leaderboards, the player's own results and history, the final results, exports and the saved session (it survives a resume). Players are not told: their screens just update. Only you see an "edited" tag, and setting an answer back to what the automatic grader said clears the change.
+
 **Playing**
 - Answers are saved to the server as you go, so a dropped connection, a locked phone or a reload keeps them. **Submit Answers** sends them right away (no confirmation) and a toast says they can still be changed. You can keep changing your answers until the round ends: edits only count once you tap **Submit Updated Answers** (the screen warns that you have unsent changes, and your last submission counts until you resubmit). If a timed round runs out with unsent changes, they are submitted automatically.
 - When a timed round runs out, whatever is filled in is submitted automatically.
@@ -42,6 +44,7 @@ Client → server (payloads include `roomCode`):
 | `endRound` | `{ roundIndex }` | presenter | Ignored unless that round is the open one. |
 | `startRoundCountdown` | `{ roundIndex, seconds }` | presenter | Only on an open, untimed round without a countdown; 10 to 3600 s. Errors via `roomError`. |
 | `cancelRoundCountdown` | `{ roundIndex }` | presenter | Puts the round back to no time limit. |
+| `overrideAnswer` | `{ username, questionIndex, correct }` | presenter | Round quizzes only, for a finished question the player answered, until the quiz is completed. Replies `answerOverridden` or `overrideRejected { message }`. |
 | `saveRoundDraft` | `{ roundIndex, answers }` | player | No reply. Capped at 60 per 10 s per socket. |
 | `submitRound` | `{ roundIndex, answers }` | player | Can be sent again until the round ends; the newest submission replaces the last. |
 
@@ -53,6 +56,7 @@ Server → client:
 |---|---|
 | `roundStarted` | `{ roundIndex, title, timeLimitSeconds, serverNow, startedAt, endsAt, totalRounds, questions: [{ index, text, type, choices, imageUrl, imageType }] }` |
 | `roundTimer` | `{ roundIndex, timeLimitSeconds, countdown, serverNow, startedAt, endsAt }` (sent when a countdown starts or is cancelled; `timeLimitSeconds` is `null` again after a cancel. `roundStarted` and `roundState` carry the same fields) |
+| `roundResults` | `{ lastEnded, history? }` (the same fields as in `roundState`, re-sent when a grade changes: each player gets their own corrected results, the presenter the full standings) |
 | `roundSubmitted` | `{ roundIndex, success, message?, ended? }` (to the submitter, once per accepted submit) |
 | `roundProgress` | `{ roundIndex, submitted, total }`; the presenter also gets `submittedNames` |
 | `roundEnded` | `{ roundIndex, title, reason: 'presenter' \| 'timeout', isLastRound, totalRounds, questions: [{ index, text, type, choices, correctChoice, acceptedAnswers, ... }], standings: [{ rank, name, roundScore, totalScore }] }`; each player also gets `you: { answers, results, roundScore, totalScore, rank }` |

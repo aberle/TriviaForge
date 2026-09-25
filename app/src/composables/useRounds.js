@@ -11,7 +11,7 @@ import { ref, computed } from 'vue'
  * roundProgress, roundEnded and roundSubmitted (the player's submit acknowledgement).
  */
 
-const ROUND_EVENTS = ['roundState', 'roundStarted', 'roundProgress', 'roundEnded', 'roundSubmitted', 'roundTimer']
+const ROUND_EVENTS = ['roundState', 'roundStarted', 'roundProgress', 'roundEnded', 'roundSubmitted', 'roundTimer', 'roundResults']
 
 export function useRounds(socket) {
   const rounds = ref([]) // [{ index, title, questionCount, questionIndexes, timeLimitSeconds }]
@@ -77,6 +77,12 @@ export function useRounds(socket) {
     current.value = withClientTime({ ...current.value, ...payload })
   }
 
+  // Results changed after the fact (the presenter settled a dispute): refresh what was already shown
+  const onResults = (payload) => {
+    if (payload.lastEnded) lastEnded.value = payload.lastEnded
+    if (payload.history) history.value = payload.history
+  }
+
   const onProgress = (payload) => {
     progress.value = payload
   }
@@ -123,6 +129,7 @@ export function useRounds(socket) {
     socket.on('roundEnded', onEnded)
     socket.on('roundSubmitted', onSubmitted)
     socket.on('roundTimer', onTimer)
+    socket.on('roundResults', onResults)
   }
 
   const reset = () => {

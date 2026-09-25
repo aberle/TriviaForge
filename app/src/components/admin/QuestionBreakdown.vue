@@ -99,6 +99,8 @@ function roundHeading(qIdx) {
 
 function isPlayerCorrect(question, player, answer) {
   if (answer === undefined || answer === '') return false;
+  // The saved grade, which includes any the presenter changed by hand
+  if (question.answerCorrectness?.[player.name] !== undefined) return question.answerCorrectness[player.name] === true;
   if (question.type === 'short_answer') {
     return question.shortAnswerCorrectness?.[player.name] === true;
   }
