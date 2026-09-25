@@ -74,7 +74,7 @@
           :selectedQuiz="selectedQuiz"
           :editingQuestionIdx="editingQuestionIdx"
           :draggedQuestionIdx="draggedQuestionIdx"
-          :dragOverIdx="dragOverIdx"
+          :dragOverTarget="dragOverTarget"
           @shuffleQuestions="shuffleQuestions"
           @shuffleAllChoices="shuffleAllChoices"
           @enableRounds="enableRounds"
@@ -90,7 +90,6 @@
           @deleteQuestion="deleteQuestion"
           @questionDragStart="handleDragStart"
           @questionDragOver="handleDragOver"
-          @questionDragLeave="handleDragLeave"
           @questionDrop="handleDrop"
           @questionDragEnd="handleDragEnd"
         />
@@ -568,7 +567,7 @@ const duplicateWarningData = ref({ questionText: '', exactMatch: null, similarQu
 const pendingQuestionSave = ref(null)
 const editingQuestionIdx = ref(null)
 const draggedQuestionIdx = ref(null)
-const dragOverIdx = ref(null)
+const dragOverTarget = ref(null) // where the dragged question would land (see QuestionsList)
 const draggedChoiceIdx = ref(null)
 const dragOverChoiceIdx = ref(null)
 
@@ -1279,50 +1278,62 @@ const handleDragStart = (idx) => {
   draggedQuestionIdx.value = idx
 }
 
-const handleDragOver = (event, idx) => {
-  event.preventDefault()
-  dragOverIdx.value = idx
+const handleDragOver = (target) => {
+  const current = dragOverTarget.value
+  // Only update when it changes: dragover fires continuously
+  if (!current || JSON.stringify(current) !== JSON.stringify(target)) dragOverTarget.value = target
 }
 
-const handleDragLeave = () => {
-  dragOverIdx.value = null
-}
-
-const handleDrop = async (event, dropIdx) => {
+// Where a dragged question goes: before/after another question (in any round), or to the top/end of a
+// round (which is the only way into an empty round). Dropping into another round moves it there.
+const handleDrop = async (event, target) => {
   event.preventDefault()
-  const dragIdx = draggedQuestionIdx.value
+  const from = draggedQuestionIdx.value
+  draggedQuestionIdx.value = null
+  dragOverTarget.value = null
+  if (from === null || !target || !selectedQuiz.value) return
 
-  if (dragIdx === null || dragIdx === dropIdx || !selectedQuiz.value) {
-    draggedQuestionIdx.value = null
-    dragOverIdx.value = null
-    return
+  const questions = currentQuestions.value
+  const dragged = questions[from]
+  if (!dragged) return
+  const rest = questions.filter((_, i) => i !== from)
+
+  let targetRound = roundOf(dragged)
+  let insertAt
+  if (target.type === 'question') {
+    const anchor = questions[target.idx]
+    if (!anchor || anchor === dragged) return // dropped on itself
+    targetRound = roundOf(anchor)
+    const at = rest.indexOf(anchor)
+    insertAt = target.position === 'after' ? at + 1 : at
+  } else {
+    targetRound = target.roundIdx
+    const inRound = rest.map((q, i) => ({ q, i })).filter(({ q }) => roundOf(q) === targetRound)
+    if (inRound.length === 0) insertAt = rest.length // empty round: any position, it is sorted into its round on save
+    else insertAt = target.position === 'start' ? inRound[0].i : inRound[inRound.length - 1].i + 1
   }
 
+  const hasRounds = currentRounds.value.length > 0
+  const moved = hasRounds ? { ...dragged, roundIndex: targetRound } : dragged
+  const reordered = [...rest.slice(0, insertAt), moved, ...rest.slice(insertAt)]
+
+  // Nothing would change (same place, same round): don't save
+  const unchanged = roundOf(dragged) === targetRound
+    && reordered.every((q, i) => (q === moved ? dragged : q) === questions[i])
+  if (unchanged) return
+
   try {
-    const reorderedQuestions = [...currentQuestions.value]
-    // Remove from old position
-    const [movedQuestion] = reorderedQuestions.splice(dragIdx, 1)
-    // Dropping on a question in another round moves the dragged question into that round
-    const targetRound = roundOf(currentQuestions.value[dropIdx])
-    const moved = currentRounds.value.length ? { ...movedQuestion, roundIndex: targetRound } : movedQuestion
-    // Insert at new position
-    reorderedQuestions.splice(dropIdx, 0, moved)
-
-    await persistQuiz(reorderedQuestions)
-
+    await persistQuiz(reordered)
     await loadQuizzes()
     selectQuiz(selectedQuiz.value)
   } catch (err) {
-    showAlert('Error reordering question: ' + err.message, 'Error')
-  } finally {
-    draggedQuestionIdx.value = null
-    dragOverIdx.value = null
+    showAlert('Error moving question: ' + err.message, 'Error')
   }
 }
 
 const handleDragEnd = () => {
   draggedQuestionIdx.value = null
-  dragOverIdx.value = null
+  dragOverTarget.value = null
 }
 
 // Choice drag-and-drop handlers

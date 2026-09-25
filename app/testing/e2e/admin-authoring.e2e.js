@@ -101,6 +101,47 @@ await runSuite(
     await sleep(1200);
     ok('dropping a question on itself changes nothing', (await layout()) === before);
 
+    section('Real mouse drags (from every round)');
+    // A tall window keeps every round on screen so the drop points are reachable
+    await admin.send('Emulation.setDeviceMetricsOverride', { width: 1300, height: 2400, deviceScaleFactor: 1, mobile: false });
+    await sleep(400);
+    await admin.eval('window.scrollTo(0, 0); true');
+    const at = (selector, index, edge) => `(() => { const r = document.querySelectorAll(${JSON.stringify(selector)})[${index}].getBoundingClientRect(); return { x: r.x + r.width / 2, y: ${edge === 'top' ? 'r.top + 4' : edge === 'bottom' ? 'r.bottom - 4' : 'r.y + r.height / 2'} }; })()`;
+    const realDrag = async (from, selector, index, edge) => {
+      const result = await admin.realDrag({ selector: '.question-item', index: from }, at(selector, index, edge));
+      await sleep(1800);
+      await admin.waitFor(`document.querySelectorAll('.question-item').length === 5`);
+      return result;
+    };
+
+    const real = await env.createQuiz({
+      title: `Real ${TITLE}`,
+      rounds: [{ title: 'A' }, { title: 'B' }, { title: 'C' }],
+      questions: ['One', 'Two', 'Three', 'Four', 'Five'].map((n, i) => Q.mc(`Question ${n} text here`, ['x', 'y'], 0, [0, 0, 1, 2, 2][i])),
+    });
+    await admin.goto(`${BASE}/admin`);
+    await admin.waitText(`Real ${TITLE}`);
+    await openQuiz(`Real ${TITLE}`, 5);
+    await admin.eval('window.scrollTo(0, 0); true');
+    const now = () => layout(real.id);
+    ok('starting layout', (await now()) === '0:[One,Two] 1:[Three] 2:[Four,Five]');
+
+    let r = await realDrag(4, '.question-item', 0, 'top'); // Five, in the LAST round, before the first question
+    ok('a question from a later round can be picked up: the browser does not cancel the drag', r.started && !r.cancelled, JSON.stringify(r));
+    ok('...and lands before the first question of the first round', (await now()) === '0:[Five,One,Two] 1:[Three] 2:[Four]', await now());
+    r = await realDrag(4, '.question-item', 3, 'bottom'); // Four, alone in the last round, after Three
+    ok('picking up the only question of the last round works', r.started && !r.cancelled && (await now()) === '0:[Five,One,Two] 1:[Three,Four]', `${JSON.stringify(r)} ${await now()}`);
+    r = await realDrag(2, '.round-header', 2, 'middle'); // Two, onto the header of the now-empty last round
+    ok('dropping onto the header of an empty round with the mouse works', r.started && !r.cancelled && (await now()) === '0:[Five,One] 1:[Three,Four] 2:[Two]', `${JSON.stringify(r)} ${await now()}`);
+    r = await realDrag(0, '.round-end-drop', 1, 'middle'); // Five, into the end zone of round B
+    ok("dropping into a round's end zone with the mouse works", r.started && !r.cancelled && (await now()) === '0:[One] 1:[Three,Four,Five] 2:[Two]', `${JSON.stringify(r)} ${await now()}`);
+    let allStarted = true;
+    for (let i = 0; i < 6; i++) {
+      r = await realDrag(i % 2 ? 0 : 4, '.question-item', i % 2 ? 4 : 0, i % 2 ? 'bottom' : 'top');
+      allStarted = allStarted && r.started && !r.cancelled;
+    }
+    ok('six more drags in a row all work (nothing gets stuck)', allStarted);
+
     section('Feedback while dragging');
     await drag(0, { q: 4, pos: 'after' }, { hold: true });
     await sleep(200);
@@ -108,7 +149,7 @@ await runSuite(
     ok('an insertion line shows, the destination round is highlighted, and every round has a drop zone', ui.line && ui.highlighted === 1 && ui.zones === 3, JSON.stringify(ui));
     await admin.eval(`document.querySelectorAll('.question-item')[0].dispatchEvent(new DragEvent('dragend', { bubbles: true })); true`);
     await sleep(300);
-    ok('the indicators disappear when the drag ends', (await admin.count('.round-end-drop, .drop-before, .drop-after, .drag-target')) === 0);
+    ok('the indicators disappear when the drag ends', (await admin.count('.round-end-drop.armed, .drop-before, .drop-after, .drag-target')) === 0);
 
     section('A quiz without rounds');
     const flat = await env.createQuiz({ title: `Flat ${TITLE}`, questions: ['One', 'Two', 'Three'].map((n) => Q.mc(`Question ${n} text here`, ['x', 'y'], 0, undefined)) });

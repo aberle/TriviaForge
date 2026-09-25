@@ -10,8 +10,20 @@
     </div>
     <div class="questions-list">
       <div v-if="questions.length === 0 && !hasRounds" class="empty-state"><em>No questions</em></div>
-      <section v-for="group in groups" :key="group.roundIdx" class="round-group">
-        <div v-if="hasRounds" class="round-header">
+      <section
+        v-for="group in groups"
+        :key="group.roundIdx"
+        class="round-group"
+        :class="{ 'drag-target': isDragTargetRound(group.roundIdx) }"
+      >
+        <!-- Dropping on a round's header moves the dragged question to the top of that round -->
+        <div
+          v-if="hasRounds"
+          class="round-header"
+          :class="{ 'drop-active': isRoundTarget(group.roundIdx, 'start') }"
+          @dragover="onRoundOver($event, group.roundIdx, 'start')"
+          @drop="onRoundDrop($event, group.roundIdx, 'start')"
+        >
           <div class="round-header-top">
             <AppIcon name="layers" size="sm" class="round-icon" />
             <input
@@ -51,13 +63,13 @@
           :class="{
             active: editingQuestionIdx === item.idx,
             dragging: draggedQuestionIdx === item.idx,
-            'drag-over': dragOverIdx === item.idx
+            'drop-before': isQuestionTarget(item.idx, 'before'),
+            'drop-after': isQuestionTarget(item.idx, 'after')
           }"
           draggable="true"
           @dragstart="handleDragStart(item.idx)"
-          @dragover="handleDragOver($event, item.idx)"
-          @dragleave="handleDragLeave"
-          @drop="handleDrop($event, item.idx)"
+          @dragover="onItemOver($event, item.idx)"
+          @drop="onItemDrop($event, item.idx)"
           @dragend="handleDragEnd"
         >
           <div class="question-content" @click="$emit('editQuestion', item.idx)">
@@ -87,6 +99,18 @@
             <button @click.stop="$emit('deleteQuestion', item.idx)" class="btn-delete" title="Delete"><AppIcon name="trash-2" size="sm" /></button>
           </div>
         </div>
+        <!-- Every round has a drop zone at its end (the only target in an empty round). It is always in the
+             layout and only fades in while dragging: adding elements when a drag starts moves the dragged
+             question, and Chrome then cancels the drag -->
+        <div
+          v-if="hasRounds"
+          class="round-end-drop"
+          :class="{ armed: draggedQuestionIdx !== null, 'drop-active': isRoundTarget(group.roundIdx, 'end') }"
+          @dragover="onRoundOver($event, group.roundIdx, 'end')"
+          @drop="onRoundDrop($event, group.roundIdx, 'end')"
+        >
+          <AppIcon name="corner-down-left" size="sm" /> Drop here to add to {{ group.round.title || `Round ${group.roundIdx + 1}` }}
+        </div>
       </section>
       <button v-if="hasRounds" @click="$emit('addRound')" class="btn-add-round"><AppIcon name="plus" size="sm" /> Add Round</button>
     </div>
@@ -103,7 +127,9 @@ const props = defineProps({
   selectedQuiz: { type: Object, default: null },
   editingQuestionIdx: { type: [Number, null], default: null },
   draggedQuestionIdx: { type: [Number, null], default: null },
-  dragOverIdx: { type: [Number, null], default: null }
+  // Where the dragged question would land: { type: 'question', idx, position: 'before'|'after' }
+  // or { type: 'round', roundIdx, position: 'start'|'end' }
+  dragOverTarget: { type: Object, default: null }
 });
 
 const emit = defineEmits([
@@ -122,7 +148,6 @@ const emit = defineEmits([
   'deleteQuestion',
   'questionDragStart',
   'questionDragOver',
-  'questionDragLeave',
   'questionDrop',
   'questionDragEnd'
 ]);
@@ -156,22 +181,50 @@ const handleDragStart = (idx) => {
   emit('questionDragStart', idx);
 };
 
-const handleDragOver = (event, idx) => {
-  event.preventDefault();
-  emit('questionDragOver', event, idx);
-};
-
-const handleDragLeave = () => {
-  emit('questionDragLeave');
-};
-
-const handleDrop = (event, dropIdx) => {
-  event.preventDefault();
-  emit('questionDrop', event, dropIdx);
-};
-
 const handleDragEnd = () => {
   emit('questionDragEnd');
+};
+
+// Over a question: the upper half means "before it", the lower half "after it"
+const questionTarget = (event, idx) => {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return { type: 'question', idx, position: event.clientY < rect.top + rect.height / 2 ? 'before' : 'after' };
+};
+
+const onItemOver = (event, idx) => {
+  event.preventDefault(); // makes the question a valid drop target
+  emit('questionDragOver', questionTarget(event, idx));
+};
+
+const onItemDrop = (event, idx) => {
+  event.preventDefault();
+  emit('questionDrop', event, questionTarget(event, idx));
+};
+
+// Over a round's header ('start') or its end zone ('end')
+const onRoundOver = (event, roundIdx, position) => {
+  event.preventDefault();
+  emit('questionDragOver', { type: 'round', roundIdx, position });
+};
+
+const onRoundDrop = (event, roundIdx, position) => {
+  event.preventDefault();
+  emit('questionDrop', event, { type: 'round', roundIdx, position });
+};
+
+// Highlighting helpers
+const isQuestionTarget = (idx, position) =>
+  props.dragOverTarget?.type === 'question' && props.dragOverTarget.idx === idx && props.dragOverTarget.position === position;
+
+const isRoundTarget = (roundIdx, position) =>
+  props.dragOverTarget?.type === 'round' && props.dragOverTarget.roundIdx === roundIdx && props.dragOverTarget.position === position;
+
+// The round the dragged question would end up in (whether over its header, end zone or a question)
+const isDragTargetRound = (roundIdx) => {
+  const target = props.dragOverTarget;
+  if (!target || props.draggedQuestionIdx === null) return false;
+  if (target.type === 'round') return target.roundIdx === roundIdx;
+  return (props.questions[target.idx]?.roundIndex ?? 0) === roundIdx;
 };
 </script>
 
@@ -259,9 +312,49 @@ h2 {
   background: var(--info-bg-10);
 }
 
-.question-item.drag-over {
-  border: 2px dashed var(--warning-light);
+.question-item.drop-before {
+  box-shadow: 0 -4px 0 0 var(--warning-light);
+}
+
+.question-item.drop-after {
+  box-shadow: 0 4px 0 0 var(--warning-light);
+}
+
+.round-group.drag-target {
   background: var(--warning-bg-10);
+  border-radius: 10px;
+  outline: 2px dashed var(--warning-light);
+  outline-offset: 4px;
+}
+
+.round-header.drop-active {
+  background: var(--warning-bg-20);
+  border-color: var(--warning-light);
+}
+
+.round-end-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.35rem;
+  border: 2px dashed transparent;
+  border-radius: 8px;
+  color: transparent;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.round-end-drop.armed {
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.round-end-drop.drop-active {
+  border-color: var(--warning-light);
+  background: var(--warning-bg-20);
+  color: var(--warning-light);
 }
 
 .question-content {
