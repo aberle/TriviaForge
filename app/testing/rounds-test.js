@@ -242,7 +242,16 @@ async function main() {
     check('rejoin keeps the remaining time', snapshot.current.endsAt > snapshot.current.serverNow);
 
     section(`Timer expiry ends round 1 (waiting ~${ROUND1_SECONDS + 2}s)`);
-    const ended = await p1.waitFor('roundEnded', { timeout: (ROUND1_SECONDS + 6) * 1000 });
+    // The round closes into the presenter's review; nothing is sent to players until it is finished
+    const review1 = await presenter.waitFor('roundReview', { timeout: (ROUND1_SECONDS + 6) * 1000 });
+    check('a closed round goes to the presenter for review (timeout)', review1.reason === 'timeout' && review1.roundIndex === 0 && Array.isArray(review1.items));
+    check('the review lists the short-answer question, nothing to check', review1.items.length === 1 && review1.items[0].entries.length === 0);
+    const playerReview = await p1.waitFor('roundReview');
+    check('players are only told the round is being checked', playerReview.items === undefined && !/correctChoice|acceptedAnswers|standings/.test(JSON.stringify(playerReview)));
+    await sleep(500);
+    check('no results reach players or the display while the review is open', [p1, p3, display].every((c) => c.all('roundEnded').length === 0));
+    presenter.socket.emit('finishRoundReview', { roomCode, roundIndex: 0 });
+    const ended = await p1.waitFor('roundEnded', { timeout: 8000 });
     check('round ended by timeout', ended.reason === 'timeout' && ended.roundIndex === 0 && ended.isLastRound === false);
     check('correct answers are revealed after the round', ended.questions[0].correctChoice === 0 && ended.questions[2].acceptedAnswers?.[0]?.answer_text === 'Jupiter');
     check('standings rank players', ended.standings.map((s) => `${s.rank}:${s.name}:${s.totalScore}`).join() === `1:${p1.name}:3,2:${p2.name}:2,3:${p3.name}:0`, JSON.stringify(ended.standings));
@@ -286,7 +295,17 @@ async function main() {
 
     const endedBefore = p1.all('roundEnded').length;
     presenter.socket.emit('endRound', { roomCode, roundIndex: 1 });
-    presenter.socket.emit('endRound', { roomCode, roundIndex: 1 }); // duplicate: must finalize only once
+    presenter.socket.emit('endRound', { roomCode, roundIndex: 1 }); // duplicate: must close only once
+    await presenter.waitFor('roundReview', { since: r2Mark.presenter });
+    check('a duplicate endRound closes the round once', presenter.all('roundReview', r2Mark.presenter).length === 1);
+    mark = presenter.mark();
+    presenter.socket.emit('startRound', { roomCode, roundIndex: 0 });
+    check('a round in review cannot be followed by another round', /finish reviewing/i.test(await presenter.waitFor('roomError', { since: mark })));
+    mark = presenter.mark();
+    presenter.socket.emit('completeQuiz', { roomCode });
+    check('the quiz cannot be completed during the review', /reviewing/i.test(await presenter.waitFor('roomError', { since: mark })));
+    presenter.socket.emit('finishRoundReview', { roomCode, roundIndex: 1 });
+    presenter.socket.emit('finishRoundReview', { roomCode, roundIndex: 1 }); // duplicate: must finish only once
     const ended2 = await p1.waitFor('roundEnded', { since: r2Mark.p1 });
     check('presenter ended the round', ended2.reason === 'presenter' && ended2.isLastRound === true);
     await sleep(400);

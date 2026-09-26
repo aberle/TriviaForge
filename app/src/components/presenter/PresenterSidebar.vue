@@ -9,7 +9,12 @@
           {{ quiz.title }}
         </option>
       </select>
-      <button @click="$emit('makeRoomLive')" :disabled="!selectedQuizFilename">Make Live</button>
+      <!-- Round quizzes only: run the room with results and standings held back until the quiz is completed -->
+      <label v-if="selectedQuizHasRounds" class="hidden-standings-option" title="Players and the display see no results or standings until you complete the quiz">
+        <input v-model="hiddenStandings" type="checkbox" />
+        Hide standings until the end
+      </label>
+      <button @click="$emit('makeRoomLive', { hiddenStandings: selectedQuizHasRounds && hiddenStandings })" :disabled="!selectedQuizFilename">Make Live</button>
       <button @click="$emit('showQRModal')" :disabled="!currentRoomCode">Show Player QR Code</button>
     </div>
 
@@ -41,7 +46,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   quizzes: { type: Array, default: () => [] },
@@ -63,6 +68,8 @@ defineEmits([
 ])
 
 const selectedQuizValue = ref(props.selectedQuizFilename)
+const hiddenStandings = ref(false)
+const selectedQuizHasRounds = computed(() => (props.quizzes.find((q) => q.filename === props.selectedQuizFilename)?.roundCount || 0) > 0)
 const selectedSessionValue = ref(props.selectedSessionFilename)
 
 watch(() => props.selectedQuizFilename, (newVal) => {
@@ -83,6 +90,15 @@ const formatSessionDate = (session) => {
 </script>
 
 <style scoped>
+.hidden-standings-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
 .presenter-sidebar {
   display: flex;
   flex-direction: column;

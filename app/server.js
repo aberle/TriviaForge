@@ -836,7 +836,7 @@ app.get('/api/player/progress/:roomCode', async (req, res) => {
       // Check if this question was presented (presentedQuestions is an array of indices)
       const wasPresented = room.presentedQuestions && room.presentedQuestions.includes(index);
       // Check if this question's answer was revealed (revealedQuestions is an array of indices)
-      const wasRevealed = room.revealedQuestions && room.revealedQuestions.includes(index);
+      const wasRevealed = !roundService.resultsHidden(room) && room.revealedQuestions && room.revealedQuestions.includes(index);
 
       // Get player's answer for this question
       const playerChoice = player.answers && player.answers[index] !== undefined
@@ -920,8 +920,10 @@ app.get('/api/room/progress/:roomCode', requireAdmin, async (req, res) => {
 
     // Questions of the round that is open right now: in progress, so not "presented" yet but not
     // waiting either. Their answers stay private until the round ends.
-    const inProgressQuestions = room.rounds?.phase === 'open' && room.rounds.current !== null
-      ? room.quizData.rounds?.[room.rounds.current]?.questionIndexes || []
+    const inProgressRound = room.rounds?.phase === 'open' ? room.rounds.current
+      : room.rounds?.phase === 'review' ? room.rounds.reviewIndex : null;
+    const inProgressQuestions = inProgressRound !== null && inProgressRound !== undefined
+      ? room.quizData.rounds?.[inProgressRound]?.questionIndexes || []
       : [];
 
     const roomProgress = {
@@ -1619,7 +1621,7 @@ io.on('connection', (socket) => {
   });
 
   // Presenter creates a room
-  socket.on('createRoom', async ({ roomCode: requestedRoomCode, quizFilename, userId }) => {
+  socket.on('createRoom', async ({ roomCode: requestedRoomCode, quizFilename, userId, hiddenStandings }) => {
     try {
       let roomCode = requestedRoomCode;
       // Extract quiz ID from filename format (quiz_123.json → 123)
@@ -1685,6 +1687,8 @@ io.on('connection', (socket) => {
         // v5.16.0: rooms for quizzes with rounds track round state
         if (roundService.isRoundMode(roomService.liveRooms[roomCode])) {
           roomService.liveRooms[roomCode].rounds = roundService.createState();
+          // Hidden standings mode (rounds only): results and standings wait until the quiz is completed
+          roomService.liveRooms[roomCode].hiddenStandings = hiddenStandings === true;
         }
         console.log(`Room ${roomCode} created for quiz ID ${quizId} (${quiz.title}) by admin ${userId || 1}`);
       }
@@ -1707,6 +1711,7 @@ io.on('connection', (socket) => {
         quizTitle: quizData.title,
         questions: quizData.questions,
         rounds: roomService.liveRooms[roomCode].quizData.rounds || [],
+        hiddenStandings: !!roomService.liveRooms[roomCode].hiddenStandings,
         quizCompleted: roomService.liveRooms[roomCode].status === 'completed',
         currentQuestionIndex: roomService.liveRooms[roomCode].currentQuestionIndex,
         presentedQuestions: roomService.liveRooms[roomCode].presentedQuestions,
@@ -1763,6 +1768,7 @@ io.on('connection', (socket) => {
         SELECT
           gs.id,
           gs.room_code as original_room_code,
+          gs.hidden_standings,
           gs.quiz_id,
           gs.created_at,
           gs.created_by,
@@ -1946,6 +1952,7 @@ io.on('connection', (socket) => {
         const resumedRoom = roomService.liveRooms[roomCode];
         resumedRoom.currentQuestionIndex = null;
         resumedRoom.rounds = roundService.restoreState(resumedRoom);
+        resumedRoom.hiddenStandings = session.hidden_standings === true;
       }
 
       if (env.isVerboseLogging) {
@@ -1961,6 +1968,7 @@ io.on('connection', (socket) => {
         quizTitle: quizData.title,
         questions: quizData.questions,
         rounds: quizData.rounds || [],
+        hiddenStandings: !!roomService.liveRooms[roomCode].hiddenStandings,
         currentQuestionIndex: roomService.liveRooms[roomCode].currentQuestionIndex,
         presentedQuestions: roomService.liveRooms[roomCode].presentedQuestions,
         revealedQuestions: roomService.liveRooms[roomCode].revealedQuestions,
@@ -2027,6 +2035,7 @@ io.on('connection', (socket) => {
       quizTitle: room.quizData.title,
       questions: room.quizData.questions,
       rounds: room.quizData.rounds || [],
+      hiddenStandings: !!room.hiddenStandings,
       quizCompleted: room.status === 'completed',
       currentQuestionIndex: room.currentQuestionIndex,
       players: Object.values(room.players).filter(p => !p.isSpectator), // Filter out spectators
@@ -2429,7 +2438,8 @@ io.on('connection', (socket) => {
       const answerHistory = Object.entries(playerAnswers).map(([questionIndex, choice]) => {
         const idx = parseInt(questionIndex);
         const question = room.quizData.questions[idx];
-        const isRevealed = room.revealedQuestions && room.revealedQuestions.includes(idx);
+        // In hidden standings mode nothing counts as revealed until the quiz is completed
+        const isRevealed = !roundService.resultsHidden(room) && room.revealedQuestions && room.revealedQuestions.includes(idx);
 
         let isCorrect = null;
         if (isRevealed) {
@@ -2830,6 +2840,22 @@ io.on('connection', (socket) => {
     roundService.finalizeRound(roomCode, 'presenter');
   });
 
+  // Presenter has checked the typed answers of the round that just closed: send the results out
+  socket.on('finishRoundReview', ({ roomCode, roundIndex }) => {
+    const room = roomService.liveRooms[roomCode];
+    if (!room || !roundService.isRoundMode(room)) return;
+
+    if (room.presenterId !== socket.id) {
+      socket.emit('roomError', 'Only the presenter can control rounds');
+      return;
+    }
+
+    // Ignore a stale request for a round that is not the one in review
+    if (roundIndex !== undefined && roundIndex !== room.rounds.reviewIndex) return;
+
+    roundService.finishReview(roomCode);
+  });
+
   // Presenter sets a countdown on an untimed round: it ends by itself when the time is up
   socket.on('startRoundCountdown', ({ roomCode, roundIndex, seconds }) => {
     const room = roomService.liveRooms[roomCode];
@@ -2874,15 +2900,20 @@ io.on('connection', (socket) => {
     if (!roundService.isRoundMode(room)) return reject('Grades can only be changed in a quiz with rounds');
     if (room.status === 'completed') return reject('The quiz is completed, so its results can no longer be changed');
     if (typeof correct !== 'boolean' || !Number.isInteger(questionIndex)) return reject('Invalid request');
-    if (!(room.revealedQuestions || []).includes(questionIndex)) return reject('That question has not finished yet');
+    // A question of the round being reviewed is graded from the closed round's answers; any other
+    // question must have finished (its answers are recorded on the player)
+    const inReview = room.rounds.phase === 'review'
+      && room.quizData.rounds[room.rounds.reviewIndex].questionIndexes.includes(questionIndex);
+    if (!inReview && !(room.revealedQuestions || []).includes(questionIndex)) return reject('That question has not finished yet');
 
     const player = Object.values(room.players).find((p) => !p.isSpectator && p.username === username);
     if (!player) return reject('Player not found');
-    if (player.answers?.[questionIndex] === undefined) return reject('That player did not answer this question');
+    const answer = inReview ? roundService.getReviewAnswer(room, username, questionIndex) : player.answers?.[questionIndex];
+    if (answer === undefined) return reject('That player did not answer this question');
 
     // Only differences from the automatic grade are kept: setting it back to what the grader said clears it
     const threshold = quizOptions.shortAnswerMatchThreshold ?? 0.85;
-    const automatic = gradeAnswer(room.quizData.questions[questionIndex], player.answers[questionIndex], threshold);
+    const automatic = gradeAnswer(room.quizData.questions[questionIndex], answer, threshold);
     room.answerOverrides = room.answerOverrides || {};
     room.answerOverrides[username] = room.answerOverrides[username] || {};
     if (correct === automatic) {
@@ -2893,9 +2924,15 @@ io.on('connection', (socket) => {
     }
     room.lastActivityAt = Date.now();
 
-    roundService.emitResultsUpdate(roomCode, room);
     socket.emit('answerOverridden', { username, questionIndex, correct });
 
+    if (inReview) {
+      // Nothing has been sent to players yet, and nothing is recorded until the review is finished
+      roundService.emitReview(roomCode, room, { presenterOnly: true });
+      return;
+    }
+
+    roundService.emitResultsUpdate(roomCode, room);
     try {
       await saveSession(roomCode, room);
     } catch (err) {
@@ -2959,6 +2996,10 @@ io.on('connection', (socket) => {
         socket.emit('roomError', 'End the current round before completing the quiz');
         return;
       }
+      if (room.rounds.phase === 'review') {
+        socket.emit('roomError', 'Finish reviewing the last round before completing the quiz');
+        return;
+      }
     }
 
     room.status = 'completed';
@@ -2984,6 +3025,11 @@ io.on('connection', (socket) => {
         console.error('Error saving session:', err);
         socket.emit('roomError', 'Failed to save quiz session.');
       }
+    }
+
+    // Hidden standings mode: everyone's results were held back until now, so send each player theirs
+    if (roundService.isRoundMode(room) && room.hiddenStandings) {
+      roundService.emitResultsUpdate(roomCode, room);
     }
 
     // v5.6.0: Broadcast quiz completion to ALL clients in the room (not just presenter)

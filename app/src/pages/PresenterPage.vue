@@ -43,10 +43,14 @@
         :current="roundCurrent"
         :progress="roundProgress"
         :lastEnded="roundLastEnded"
+        :review="roundReview"
+        :hiddenStandings="hiddenStandings"
         :quizCompleted="quizCompleted"
         @startRound="startRound"
         @endRound="endRound"
         @completeQuiz="completeQuiz"
+        @finishReview="finishRoundReview"
+        @overrideAnswer="overrideAnswer"
         @startCountdown="startRoundCountdown"
         @cancelCountdown="cancelRoundCountdown"
       />
@@ -235,7 +239,8 @@ const {
   nextRoundIndex: roundNext,
   current: roundCurrent,
   progress: roundProgress,
-  lastEnded: roundLastEnded
+  lastEnded: roundLastEnded,
+  review: roundReview
 } = rounds
 const { post, get } = useApi()
 const authStore = useAuthStore()
@@ -283,6 +288,7 @@ const revealedQuestions = ref([])
 const roundsConfig = ref([]) // [{ index, title, timeLimitSeconds, questionIndexes }] from the server; empty = no rounds
 const quizCompleted = ref(false)
 const roundMode = computed(() => roundsConfig.value.length > 0)
+const hiddenStandings = ref(false) // this room hides results and standings from players until the quiz is completed
 const roundList = computed(() => roundsConfig.value.map(r => ({ ...r, questionCount: r.questionIndexes.length })))
 
 // Session state
@@ -407,14 +413,14 @@ const handleDialogCancel = () => {
 }
 
 // Make room live
-const makeRoomLive = async () => {
+const makeRoomLive = async (options = {}) => {
   if (!selectedQuizFilename.value) {
     await showAlert('Select a quiz first', 'No Quiz Selected')
     return
   }
   const roomCode = Math.floor(1000 + Math.random() * 9000).toString()
   currentQuizFilename.value = selectedQuizFilename.value // Store for reconnection
-  socket.emit('createRoom', { roomCode, quizFilename: selectedQuizFilename.value, userId: authStore.userId })
+  socket.emit('createRoom', { roomCode, quizFilename: selectedQuizFilename.value, userId: authStore.userId, hiddenStandings: options.hiddenStandings === true })
 }
 
 // Resume session
@@ -575,6 +581,12 @@ const endRound = async () => {
     if (!confirmed) return
   }
   socket.emit('endRound', { roomCode: currentRoomCode.value, roundIndex: roundCurrent.value?.roundIndex })
+}
+
+// The presenter has checked the typed answers of the round that closed: send the results out
+const finishRoundReview = () => {
+  if (!currentRoomCode.value) return
+  socket.emit('finishRoundReview', { roomCode: currentRoomCode.value, roundIndex: roundReview.value?.roundIndex })
 }
 
 // Settle a dispute: count a player's answer to a finished question as correct (or wrong)
@@ -752,6 +764,7 @@ const resetRoom = () => {
   autoModeState.value = 'idle'
   rounds.reset()
   roundsConfig.value = []
+  hiddenStandings.value = false
   quizCompleted.value = false
   resetAllAnsweredState()
 }
@@ -924,12 +937,13 @@ const setupSocketListeners = () => {
   })
   socketInstance.on('overrideRejected', ({ message }) => showAlert(message, 'Grade Not Changed'))
 
-  socketInstance.on('roomCreated', ({ roomCode, quizFilename, quizTitle, questions, rounds: serverRounds, quizCompleted: serverQuizCompleted, currentQuestionIndex: serverCurrentQuestionIndex, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, isResumed, originalRoomCode, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
+  socketInstance.on('roomCreated', ({ roomCode, quizFilename, quizTitle, questions, rounds: serverRounds, hiddenStandings: serverHiddenStandings, quizCompleted: serverQuizCompleted, currentQuestionIndex: serverCurrentQuestionIndex, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, isResumed, originalRoomCode, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
     currentRoomCode.value = roomCode
     currentQuizFilename.value = quizFilename // Store for reconnection
     // A different room may have left round state behind; the server re-sends this room's next
     rounds.reset()
     roundsConfig.value = serverRounds || []
+    hiddenStandings.value = serverHiddenStandings === true
     quizCompleted.value = serverQuizCompleted === true
     currentQuestions.value = questions || []
     presentedQuestions.value = serverPresentedQuestions || []
@@ -987,10 +1001,11 @@ const setupSocketListeners = () => {
     }
   })
 
-  socketInstance.on('roomRestored', ({ roomCode, quizTitle, questions, rounds: serverRounds, quizCompleted: serverQuizCompleted, currentQuestionIndex: serverCurrentQuestionIndex, players, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
+  socketInstance.on('roomRestored', ({ roomCode, quizTitle, questions, rounds: serverRounds, hiddenStandings: serverHiddenStandings, quizCompleted: serverQuizCompleted, currentQuestionIndex: serverCurrentQuestionIndex, players, presentedQuestions: serverPresentedQuestions, revealedQuestions: serverRevealedQuestions, autoMode: serverAutoMode, questionTimer: serverQuestionTimer, revealDelay: serverRevealDelay, autoModeState: serverAutoModeState }) => {
     if (roomCode !== currentRoomCode.value) return
     rounds.reset()
     roundsConfig.value = serverRounds || []
+    hiddenStandings.value = serverHiddenStandings === true
     quizCompleted.value = serverQuizCompleted === true
     currentQuestions.value = questions || []
     presentedQuestions.value = serverPresentedQuestions || []

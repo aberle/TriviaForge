@@ -33,7 +33,7 @@ await runSuite(
     const ann = await env.player('Ann', { room });
     const bob = env.bot();
     bob.emit('joinRoom', { roomCode: room, username: 'bob_ui', displayName: 'Bob', playerID: bob.playerID });
-    await presenter.waitText('2 player(s)');
+    await presenter.waitText('Connected (2)'); // this room's own list (other rooms in the sidebar also say "N player(s)")
 
     // Question `q` (1-based) of the open Live Standings modal, and its player rows
     const rows = (q) => `[...document.querySelectorAll('.modal-overlay .question-detail:nth-of-type(${q}) .player-response')]`;
@@ -56,6 +56,8 @@ await runSuite(
     await submitAnswers(ann);
     await presenter.waitText('2 of 2 players have submitted');
     await presenter.clickText('End Round');
+    await presenter.waitText('Finish Review');
+    await presenter.clickText('Finish Review');
     await ann.waitText('this round');
     ok('Ann starts with 1 of 2', await ann.has('1 / 2'));
     ok('...and is second on the leaderboard', await ann.eval(`document.querySelector('.leaderboard-row.is-you')?.innerText.includes('2')`));

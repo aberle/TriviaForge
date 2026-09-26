@@ -27,6 +27,8 @@ const SUITES = [
   { file: 'presenter-display-flow.e2e.js', browser: true },
   { file: 'round-countdown.e2e.js', browser: true },
   { file: 'answer-override-ui.e2e.js', browser: true },
+  { file: 'round-review.e2e.js', browser: true },
+  { file: 'hidden-standings.e2e.js', browser: true },
   { file: 'legacy-live-game.e2e.js', browser: false },
   { file: 'resume-session.e2e.js', browser: false },
   { file: 'answer-override.e2e.js', browser: false },

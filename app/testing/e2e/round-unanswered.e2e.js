@@ -4,7 +4,7 @@
  * straight away, and the timer running out never asks.
  */
 
-import { runSuite, Q, pick, sleep } from './lib/harness.js';
+import { runSuite, Q, pick, sleep, finishReviewOnClose } from './lib/harness.js';
 
 await runSuite(
   'unanswered questions warning',
@@ -74,6 +74,7 @@ await runSuite(
 
     section('A complete round');
     pres.emit('endRound', { roomCode: room, roundIndex: 0 });
+    pres.emit('finishRoundReview', { roomCode: room, roundIndex: 0 });
     await ann.waitText('this round');
     pres.emit('startRound', { roomCode: room, roundIndex: 1 });
     await ann.waitText('Round 2 of 3');
@@ -85,11 +86,13 @@ await runSuite(
 
     section('The timer never asks');
     pres.emit('endRound', { roomCode: room, roundIndex: 1 });
+    pres.emit('finishRoundReview', { roomCode: room, roundIndex: 1 });
     await ann.waitText('this round');
     pres.emit('startRound', { roomCode: room, roundIndex: 2 });
     await ann.waitText('Round 3 of 3');
     await pick(ann, 0, 'Pacific'); // one of two answered, nothing submitted
-    await ann.waitText('this round', { timeout: 30000 });
+    finishReviewOnClose(pres, room, { since: pres.mark() });
+    await ann.waitText('this round', { timeout: 40000 });
     ok('a round that runs out with blanks is submitted automatically, without a warning', (await ann.has('1 / 2')) && (await ann.count('.unanswered-warning')) === 0 && !(await ann.has('tap submit again')));
 
     ok('no uncaught errors', ann.realErrors().length === 0, ann.realErrors().join(' | '));

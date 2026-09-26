@@ -66,6 +66,13 @@
           </template>
         </div>
 
+        <!-- Hidden standings mode: nothing to see until the quiz is completed -->
+        <div v-else-if="hidden" class="progress-empty">
+          <AppIcon name="eye-off" size="2xl" class="empty-icon" />
+          <p>Results are hidden for now</p>
+          <p class="empty-hint">Your answers and the correct answers will appear here once the quiz is complete.</p>
+        </div>
+
         <!-- Empty State -->
         <div v-else class="progress-empty">
           <AppIcon name="clipboard-list" size="2xl" class="empty-icon" />
@@ -84,7 +91,9 @@ import AppIcon from '@/components/common/AppIcon.vue';
 
 const props = defineProps({
   isOpen: { type: Boolean, required: true },
-  questionHistory: { type: Array, required: true }
+  questionHistory: { type: Array, required: true },
+  // Hidden standings mode, quiz not completed yet
+  hidden: { type: Boolean, default: false }
 });
 
 defineEmits(['close']);

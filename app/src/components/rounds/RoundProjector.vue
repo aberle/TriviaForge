@@ -26,6 +26,18 @@
       </div>
     </template>
 
+    <!-- The round has closed and the presenter is checking the typed answers -->
+    <template v-else-if="phase === 'review' && review && review.hidden">
+      <div class="rp-header">
+        <span class="rp-kicker">Round {{ review.roundIndex + 1 }} of {{ review.totalRounds }} complete</span>
+        <h2 class="rp-title">{{ review.title }}</h2>
+      </div>
+      <div class="rp-scroll">
+        <p class="rp-hidden-note">Results and standings will be revealed at the end of the quiz.</p>
+      </div>
+    </template>
+    <RoundClosed v-else-if="phase === 'review' && review" :review="review" :large="true" />
+
     <!-- Between rounds: leaderboard, then the answers -->
     <template v-else-if="phase === 'ended' && lastEnded">
       <div class="rp-header">
@@ -35,7 +47,10 @@
         <h2 class="rp-title">{{ lastEnded.title }}</h2>
       </div>
 
-      <div class="rp-scroll">
+      <div v-if="lastEnded.hidden" class="rp-scroll">
+        <p class="rp-hidden-note">Results and standings will be revealed at the end of the quiz.</p>
+      </div>
+      <div v-else class="rp-scroll">
         <RoundLeaderboard
           v-if="lastEnded.standings"
           :standings="lastEnded.standings"
@@ -54,6 +69,7 @@
 import AppIcon from '@/components/common/AppIcon.vue';
 import CountdownTimer from '@/components/player/CountdownTimer.vue';
 import RoundLeaderboard from '@/components/rounds/RoundLeaderboard.vue';
+import RoundClosed from '@/components/rounds/RoundClosed.vue';
 import RoundQuestionList from '@/components/rounds/RoundQuestionList.vue';
 
 defineProps({
@@ -63,7 +79,9 @@ defineProps({
   // { submitted, total }
   progress: { type: Object, default: null },
   // The last roundEnded payload
-  lastEnded: { type: Object, default: null }
+  lastEnded: { type: Object, default: null },
+  // The round that just closed (phase 'review')
+  review: { type: Object, default: null }
 });
 </script>
 

@@ -7,8 +7,16 @@
       <h2 class="review-title">{{ ended.title }}</h2>
     </div>
 
+    <!-- Hidden standings mode: nothing about how anyone did until the quiz is completed -->
+    <template v-if="ended.hidden">
+      <p class="hidden-note">
+        <AppIcon name="eye-off" size="lg" />
+        Results and standings are hidden until the end of the quiz. Your answers are in.
+      </p>
+    </template>
+
     <!-- This player's result -->
-    <template v-if="ended.you">
+    <template v-else-if="ended.you">
       <div class="score-summary">
         <div class="score-block">
           <span class="score-value">{{ ended.you.roundScore }} / {{ ended.questions.length }}</span>
@@ -61,7 +69,7 @@
     <p class="review-footer">
       <AppIcon name="hourglass" size="sm" />
       {{ ended.isLastRound
-        ? 'That was the last round! The final standings will be revealed when the presenter finishes the quiz.'
+        ? (ended.hidden ? 'That was the last round! The results will be revealed when the presenter finishes the quiz.' : 'That was the last round! The final standings will be revealed when the presenter finishes the quiz.')
         : 'Waiting for the presenter to start the next round...' }}
     </p>
   </div>
@@ -212,6 +220,20 @@ const correctAnswer = (question) => {
   color: var(--text-secondary);
   font-size: 0.95rem;
   overflow-wrap: anywhere;
+}
+
+.hidden-note {
+  margin: 0;
+  padding: 1.25rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-secondary);
+  background: var(--bg-overlay-10);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
 }
 
 .review-footer {

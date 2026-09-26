@@ -11,16 +11,18 @@ import { ref, computed } from 'vue'
  * roundProgress, roundEnded and roundSubmitted (the player's submit acknowledgement).
  */
 
-const ROUND_EVENTS = ['roundState', 'roundStarted', 'roundProgress', 'roundEnded', 'roundSubmitted', 'roundTimer', 'roundResults']
+const ROUND_EVENTS = ['roundState', 'roundStarted', 'roundProgress', 'roundEnded', 'roundSubmitted', 'roundTimer', 'roundResults', 'roundReview']
 
 export function useRounds(socket) {
   const rounds = ref([]) // [{ index, title, questionCount, questionIndexes, timeLimitSeconds }]
-  const phase = ref('idle') // 'idle' (nothing played) | 'open' (round running) | 'ended' (between rounds)
+  const phase = ref('idle') // 'idle' (nothing played) | 'open' (round running) | 'review' (round closed, presenter checking answers) | 'ended' (between rounds)
   const completed = ref([])
   const nextRoundIndex = ref(null)
   const current = ref(null) // The open round, sanitized for players, plus clientStartedAt
   const progress = ref(null) // { roundIndex, submitted, total, submittedNames? (presenter only) }
   const lastEnded = ref(null) // The most recent roundEnded payload (players also get `you`)
+  const hiddenStandings = ref(false) // hidden standings mode: no results or standings until the quiz is completed
+  const review = ref(null) // The round that just closed while the presenter checks the answers (the presenter's copy has `items`)
   const history = ref([]) // A player's results for every finished round: [{ roundIndex, title, questions, answers, results }]
 
   // Player-only state
@@ -52,6 +54,8 @@ export function useRounds(socket) {
     current.value = snapshot.current ? withClientTime(snapshot.current) : null
     progress.value = snapshot.progress || null
     lastEnded.value = snapshot.lastEnded || null
+    review.value = snapshot.review || null
+    hiddenStandings.value = snapshot.hiddenStandings === true
     history.value = snapshot.history || []
     myDraft.value = snapshot.current?.you?.draft ?? null
     mySubmittedAnswers.value = snapshot.current?.you?.submittedAnswers ?? null
@@ -62,6 +66,7 @@ export function useRounds(socket) {
 
   const onStarted = (payload) => {
     phase.value = 'open'
+    review.value = null
     current.value = withClientTime(payload)
     progress.value = { roundIndex: payload.roundIndex, submitted: 0, total: 0 }
     myDraft.value = null
@@ -83,12 +88,22 @@ export function useRounds(socket) {
     if (payload.history) history.value = payload.history
   }
 
+  // The round closed: it is being checked before its results go out (the presenter also gets the answers to check)
+  const onReview = (payload) => {
+    phase.value = 'review'
+    review.value = payload
+    current.value = null
+    progress.value = null
+    submitted.value = false
+  }
+
   const onProgress = (payload) => {
     progress.value = payload
   }
 
   const onEnded = (payload) => {
     phase.value = 'ended'
+    review.value = null
     current.value = null
     progress.value = null
     lastEnded.value = payload
@@ -130,6 +145,7 @@ export function useRounds(socket) {
     socket.on('roundSubmitted', onSubmitted)
     socket.on('roundTimer', onTimer)
     socket.on('roundResults', onResults)
+    socket.on('roundReview', onReview)
   }
 
   const reset = () => {
@@ -140,6 +156,8 @@ export function useRounds(socket) {
     current.value = null
     progress.value = null
     lastEnded.value = null
+    review.value = null
+    hiddenStandings.value = false
     history.value = []
     myDraft.value = null
     mySubmittedAnswers.value = null
@@ -157,6 +175,8 @@ export function useRounds(socket) {
     current,
     progress,
     lastEnded,
+    review,
+    hiddenStandings,
     history,
     myDraft,
     mySubmittedAnswers,

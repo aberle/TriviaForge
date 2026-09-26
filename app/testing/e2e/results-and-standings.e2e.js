@@ -26,7 +26,11 @@ await runSuite(
   },
   async ({ ok, section, env }) => {
     const { presenter, room } = env;
-    const control = (event, roundIndex) => presenter.emit(event, { roomCode: room, roundIndex });
+    // Ending a round sends it to the presenter's review; the results go out once that is finished
+    const control = (event, roundIndex) => {
+      presenter.emit(event, { roomCode: room, roundIndex });
+      if (event === 'endRound') presenter.emit('finishRoundReview', { roomCode: room, roundIndex });
+    };
     const rows = (page) => page.eval(`[...document.querySelectorAll('.remaining-row')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())`);
 
     const display = await env.open(`${BASE}/display?room=${room}`, { width: 1600, height: 900 });

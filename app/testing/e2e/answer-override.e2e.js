@@ -4,7 +4,7 @@
  * graded that way, and players are not told it was changed. Socket and API only: no browser.
  */
 
-import { runSuite, Q, sleep } from './lib/harness.js';
+import { runSuite, Q, sleep, finishReviewOnClose } from './lib/harness.js';
 
 await runSuite(
   'answer override',
@@ -53,7 +53,9 @@ await runSuite(
     const submit = (player, roundIndex, answers) => player.bot.emit('submitRound', { roomCode: room, roundIndex, answers });
     const endRound = async (index) => {
       const mark = ann.bot.mark();
+      const presMark = pres.mark();
       pres.emit('endRound', { roomCode: room, roundIndex: index });
+      await finishReviewOnClose(pres, room, { since: presMark, timeout: 5000 });
       return ann.bot.waitFor('roundEnded', { since: mark });
     };
 

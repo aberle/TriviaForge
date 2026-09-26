@@ -51,6 +51,9 @@ await runSuite(
       ok('the presenter sees 1 of 1 submitted, by name', pres.progress.value?.submitted === 1 && pres.progress.value.submittedNames[0] === 'cc_player');
 
       presBot.emit('endRound', { roomCode: room, roundIndex: 0 });
+      await sleep(300);
+      ok('the round is in review, and the player is only told it is being checked', pl.phase.value === 'review' && pl.review.value?.title === 'R1' && Array.isArray(pres.review.value?.items) && pl.review.value.items === undefined);
+      presBot.emit('finishRoundReview', { roomCode: room, roundIndex: 0 });
       await sleep(500);
       ok('roundEnded: phase ended, round 0 completed, next = 1', pl.phase.value === 'ended' && pl.completed.value.join() === '0' && pl.nextRoundIndex.value === 1);
       ok("the player's own result and rank are present", pl.lastEnded.value?.you?.roundScore === 1 && pl.lastEnded.value.you.rank === 1);

@@ -4,7 +4,7 @@
  * question text can't be highlighted, and the top bar shows the quiz name (not a question count).
  */
 
-import { runSuite, Q, pick, submitAnswers, sleep } from './lib/harness.js';
+import { runSuite, Q, pick, submitAnswers, sleep, finishReviewOnClose } from './lib/harness.js';
 
 const TITLE = `Movie Night ${Date.now().toString(36)}`;
 
@@ -30,7 +30,11 @@ await runSuite(
   async ({ ok, section, env }) => {
     const { presenter, room } = env;
     const startRound = (roundIndex) => presenter.emit('startRound', { roomCode: room, roundIndex });
-    const endRound = (roundIndex) => presenter.emit('endRound', { roomCode: room, roundIndex });
+    // Ending a round sends it to the presenter's review; the results go out once that is finished
+    const endRound = (roundIndex) => {
+      presenter.emit('endRound', { roomCode: room, roundIndex });
+      presenter.emit('finishRoundReview', { roomCode: room, roundIndex });
+    };
 
     const p = await env.player('Ann');
 
@@ -154,7 +158,8 @@ await runSuite(
     await pick(p, 0, 'Madrid'); // right, never resubmitted by hand
     await sleep(400);
     ok('there are unsent changes before the timer ends', (await state()).dirty);
-    await p.waitText('this round', { timeout: 30000 });
+    finishReviewOnClose(presenter, room, { since: presenter.mark() }); // the presenter finishes the review once the timer has closed the round
+    await p.waitText('this round', { timeout: 40000 });
     ok('on expiry the unsent change was submitted automatically (and no extra toast)', (await p.has('A. Madrid')) && (await p.has('1 / 1')) && !(await p.has('Updated answers submitted')));
 
     ok('no uncaught errors on the player page', p.realErrors().length === 0, p.realErrors().join(' | '));

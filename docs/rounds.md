@@ -14,8 +14,10 @@ A quiz can be split into rounds. In a round, players see **every question at onc
 1. Make the room live as usual. The middle column shows the rounds instead of the question list. Auto-pilot is not available for round quizzes.
 2. **Start** a round. Players and the display page see all its questions at once.
 3. Watch "X of N players have submitted". An untimed round ends when you click **End Round** (the button pulses once everyone has submitted), or you can start a **countdown** on it (30 s, 1, 2 or 5 min, or your own 10 to 3600 s): it ends by itself when the countdown reaches zero, and you can cancel it. A timed round ends by itself when time is up, and you can still end it early.
-4. When a round ends, everyone sees the leaderboard, players also see their own results, and the display page shows the answers. Start the next round.
+4. When a round ends (you end it, or its timer runs out), it goes to a **review screen** for you before anyone sees anything. Players and the display just see "the presenter is checking the answers". The review lists every typed answer the automatic grader marked wrong, so you can **Count as correct** any false negatives (and undo it). The screen always appears, even when there is nothing to check. Click **Finish Review & Send Results** and everyone gets their results as usual: the leaderboard, players' own results, and the answers on the display page. Then start the next round.
 5. After the last round, only you see the final standings. Players still see their own round result and answers, and the display shows the answers, but neither gets the leaderboard, rank or total until you click **Complete Quiz & Save** (which then shows the final podium and saves the session). The server withholds this data rather than just hiding it on screen.
+
+**Hidden standings mode.** For a round quiz, tick **Hide standings until the end** next to Make Live. Then nothing about how anyone did (results, standings, correct answers) reaches players or the display until you complete the quiz: after each round they just see that the round is complete. You still see everything. When you complete the quiz players get the final results, and their Progress button shows their answers and the correct ones. The mode is saved with the session, so a resumed session keeps it.
 
 **Settling a dispute.** In Live Standings, every answer to a finished question has a **Mark correct** / **Mark wrong** button (round quizzes, until the quiz is completed). The answer then counts exactly that way everywhere, as if it had always been graded like that: scores, leaderboards, the player's own results and history, the final results, exports and the saved session (it survives a resume). Players are not told: their screens just update. Only you see an "edited" tag, and setting an answer back to what the automatic grader said clears the change.
 
@@ -47,6 +49,7 @@ Client → server (payloads include `roomCode`):
 | `startRoundCountdown` | `{ roundIndex, seconds }` | presenter | Only on an open, untimed round without a countdown; 10 to 3600 s. Errors via `roomError`. |
 | `cancelRoundCountdown` | `{ roundIndex }` | presenter | Puts the round back to no time limit. |
 | `overrideAnswer` | `{ username, questionIndex, correct }` | presenter | Round quizzes only, for a finished question the player answered, until the quiz is completed. Replies `answerOverridden` or `overrideRejected { message }`. |
+| `finishRoundReview` | `{ roundIndex }` | presenter | Ends the review of the round that just closed and sends the results. Ignored unless that round is in review. |
 | `saveRoundDraft` | `{ roundIndex, answers }` | player | No reply. Capped at 60 per 10 s per socket. |
 | `submitRound` | `{ roundIndex, answers }` | player | Can be sent again until the round ends; the newest submission replaces the last. |
 
@@ -61,10 +64,11 @@ Server → client:
 | `roundResults` | `{ lastEnded, history? }` (the same fields as in `roundState`, re-sent when a grade changes: each player gets their own corrected results, the presenter the full standings) |
 | `roundSubmitted` | `{ roundIndex, success, message?, ended? }` (to the submitter, once per accepted submit) |
 | `roundProgress` | `{ roundIndex, submitted, total }`; the presenter also gets `submittedNames` |
+| `roundReview` | A round has closed and is being reviewed: `{ roundIndex, title, reason, totalRounds, isLastRound }`; the presenter's copy also has `items: [{ questionIndex, text, acceptedAnswers, entries: [{ username, name, answer, correct }] }]` (typed answers marked wrong). Nothing else about the round is sent until it is finished. |
 | `roundEnded` | `{ roundIndex, title, reason: 'presenter' \| 'timeout', isLastRound, totalRounds, questions: [{ index, text, type, choices, correctChoice, acceptedAnswers, ... }], standings: [{ rank, name, roundScore, totalScore }] }`; each player also gets `you: { answers, results, roundScore, totalScore, rank }` |
 | `roundState` | Snapshot for joins, presenter view/refresh and resume: `{ totalRounds, rounds, phase, nextRoundIndex, completed, current, progress, lastEnded }`. A player's `current.you` has `{ draft, submitted, submittedAnswers }`: `draft` is their latest answers, `submittedAnswers` the last submission (only that counts, or the draft if they never submitted). |
 
-`phase` is `idle` (nothing played), `open` (a round is running) or `ended` (between rounds). The presenter's `roomCreated` and `roomRestored` payloads also carry `rounds` (with `questionIndexes`).
+`phase` is `idle` (nothing played), `open` (a round is running), `review` (a round closed and the presenter is checking the typed answers) or `ended` (results sent, between rounds). `roundState` also has `hiddenStandings`; in that mode `roundEnded` and the snapshot's `lastEnded` reach players and the display as `{ hidden: true, standings: null, questions: [] }` (no `you`) until the quiz is completed. The presenter's `roomCreated` and `roomRestored` payloads also carry `rounds` (with `questionIndexes`).
 
 Legacy events behave differently in a round quiz: `presentQuestion`, `revealAnswer`, `startAutoMode` and `resumeAutoMode` are rejected, and `completeQuiz` needs the presenter and no open round.
 

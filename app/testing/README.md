@@ -86,6 +86,8 @@ TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 | `answer-override-ui` | The Mark correct / Mark wrong buttons in Live Standings, and the player's screen updating live without disturbing an open round |
 | `round-countdown` | A countdown on an untimed round: presets, cancel, refresh, auto-end with unsent answers submitted, not offered on timed rounds |
 | `excel-import` | Importing a quiz from Excel with rounds (the sample file, grouping, time limits, bad files), a file without rounds, and the template (API only) |
+| `round-review` | The presenter's review after a round: typed answers marked wrong are listed, can be counted correct and undone, nothing reaches players until it is finished, and it always appears |
+| `hidden-standings` | Hidden standings mode: no results, answers or standings for players or the display until the quiz is completed, then the final results and Progress; survives a resume |
 | `use-rounds-composable` | The client `useRounds` composable against real sockets (no browser) |
 
 Shared plumbing is in `e2e/lib/`: `harness.js` (suite runner, quiz/room/bot/page helpers, cleanup),

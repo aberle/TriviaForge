@@ -5,11 +5,16 @@
         <h2>{{ quizTitle }}</h2>
         <p class="rd-subtitle">
           <template v-if="!currentRoomCode">Create or select a room to begin.</template>
-          <template v-else>Round quiz &middot; {{ completed.length }} of {{ rounds.length }} rounds played</template>
+          <template v-else>
+            Round quiz &middot; {{ completed.length }} of {{ rounds.length }} rounds played
+            <span v-if="hiddenStandings" class="rd-hidden-badge" title="Players and the display see no results or standings until you complete the quiz">
+              <AppIcon name="eye-off" size="xs" /> Standings hidden until the end
+            </span>
+          </template>
         </p>
       </div>
       <Button
-        v-if="currentRoomCode && !quizCompleted && phase !== 'open' && completed.length > 0"
+        v-if="currentRoomCode && !quizCompleted && phase !== 'open' && phase !== 'review' && completed.length > 0"
         :variant="allCompleted ? 'success' : 'secondary'"
         @click="$emit('completeQuiz')"
       >
@@ -76,6 +81,51 @@
         <RoundQuestionList :questions="roundQuestions(current.roundIndex)" :reveal="true" />
       </div>
 
+      <!-- The round has closed: check the typed answers before anything is sent to players -->
+      <div v-else-if="phase === 'review' && review" class="rd-review">
+        <div class="rd-live-header">
+          <div>
+            <span class="rd-badge review">REVIEW</span>
+            <h3>Round {{ review.roundIndex + 1 }}: {{ review.title }}<span v-if="review.reason === 'timeout'"> (time's up)</span></h3>
+          </div>
+          <Button variant="primary" @click="$emit('finishReview')">
+            <AppIcon name="check-circle" size="sm" /> Finish Review &amp; Send Results
+          </Button>
+        </div>
+        <p class="rd-hint">
+          <AppIcon name="eye-off" size="sm" />
+          Players and the display can't see any results yet. Check the typed answers the grader marked wrong: count the ones that
+          are actually right, then finish the review to send everyone their results{{ review.isLastRound ? ' (the final standings stay hidden until you complete the quiz)' : '' }}.
+        </p>
+
+        <p v-if="!review.items || review.items.length === 0" class="rd-review-empty">
+          <AppIcon name="check-circle" size="sm" /> This round has no typed-answer questions, so there is nothing to review.
+        </p>
+        <div v-for="item in review.items || []" :key="item.questionIndex" class="rd-review-item">
+          <div class="rd-review-question">
+            Q{{ item.questionIndex + 1 }}. {{ item.text }}
+            <div class="rd-review-accepted">
+              Accepted: <span v-for="a in item.acceptedAnswers" :key="a.id ?? a.answer_text" class="rd-name-chip">{{ a.answer_text }}</span>
+            </div>
+          </div>
+          <p v-if="item.entries.length === 0" class="rd-review-empty">
+            <AppIcon name="check-circle" size="sm" /> Nothing to check: every typed answer was accepted (or nobody typed one).
+          </p>
+          <div v-for="entry in item.entries" :key="entry.username" class="rd-review-entry" :class="{ accepted: entry.correct }">
+            <span class="rd-review-player">{{ entry.name }}</span>
+            <span class="rd-review-answer">"{{ entry.answer }}"</span>
+            <Button
+              :variant="entry.correct ? 'success' : 'secondary'"
+              size="small"
+              @click="$emit('overrideAnswer', { username: entry.username, questionIndex: item.questionIndex, correct: !entry.correct })"
+            >
+              <AppIcon :name="entry.correct ? 'check' : 'x'" size="sm" />
+              {{ entry.correct ? 'Counted correct (undo)' : 'Count as correct' }}
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <!-- Between rounds -->
       <template v-else>
         <div v-if="phase === 'ended' && lastEnded" class="rd-between">
@@ -91,7 +141,7 @@
             v-for="round in rounds"
             :key="round.index"
             class="rd-round"
-            :class="{ done: completed.includes(round.index), next: round.index === nextRoundIndex && phase !== 'open' }"
+            :class="{ done: completed.includes(round.index), next: round.index === nextRoundIndex && phase !== 'open' && phase !== 'review' }"
           >
             <div class="rd-round-info">
               <div class="rd-round-title">
@@ -152,11 +202,15 @@ const props = defineProps({
   progress: { type: Object, default: null },
   // The last roundEnded payload
   lastEnded: { type: Object, default: null },
+  // The round that just closed, with the typed answers to check (phase 'review')
+  review: { type: Object, default: null },
+  // Hidden standings mode: players see no results or standings until the quiz is completed
+  hiddenStandings: { type: Boolean, default: false },
   // The quiz has been completed and saved: no more rounds can be started
   quizCompleted: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['startRound', 'endRound', 'completeQuiz', 'startCountdown', 'cancelCountdown']);
+const emit = defineEmits(['startRound', 'endRound', 'completeQuiz', 'startCountdown', 'cancelCountdown', 'finishReview', 'overrideAnswer']);
 
 // Countdowns the presenter can start on an untimed round (seconds), or type their own
 const COUNTDOWN_PRESETS = [30, 60, 120, 300];
@@ -264,6 +318,86 @@ const formatTime = (seconds) => {
   margin: 0;
   color: var(--text-secondary);
   font-size: 0.9rem;
+}
+
+.rd-hidden-badge {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: var(--warning-bg-20);
+  color: var(--warning-light);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.rd-badge.review {
+  background: var(--warning-bg-20);
+  color: var(--warning-light);
+}
+
+.rd-review {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 2px solid var(--warning-light);
+  border-radius: 14px;
+  background: var(--warning-bg-10);
+}
+
+.rd-review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  background: var(--bg-overlay-10);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.rd-review-question {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.rd-review-accepted {
+  margin-top: 0.3rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
+.rd-review-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.rd-review-entry {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.rd-review-entry.accepted {
+  border-color: var(--secondary-light);
+  background: var(--secondary-bg-20);
+}
+
+.rd-review-player {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rd-review-answer {
+  flex: 1;
+  min-width: 8rem;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .rd-countdown-controls {

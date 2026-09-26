@@ -42,7 +42,7 @@ await runSuite(
     const cy = env.bot();
     bob.emit('joinRoom', { roomCode: room, username: 'bob_e2e', displayName: 'Bob', playerID: bob.playerID });
     cy.emit('joinRoom', { roomCode: room, username: 'cy_e2e', displayName: 'Cy', playerID: cy.playerID });
-    await presenter.waitText('3 player(s)');
+    await presenter.waitText('Connected (3)'); // this room's own list (other rooms in the sidebar also say "N player(s)")
     await sleep(500);
 
     const confirmDialog = async (page) => {
@@ -75,6 +75,16 @@ await runSuite(
     await presenter.clickText('End Round');
     await presenter.waitText('has not submitted yet');
     await confirmDialog(presenter); // Cy hasn't submitted: the presenter is warned first
+
+    section('Round 1 is reviewed before the results go out');
+    await presenter.waitText('Finish Review');
+    await ann.waitText('checking the answers');
+    ok("the player is told the answers are being checked, and sees no results", (await ann.has('checking the answers')) && !(await ann.has('3 / 3')) && !(await ann.visible('.round-leaderboard')));
+    await display.waitText('checking the answers');
+    ok('the display shows the same, with no answers or leaderboard', !(await display.has('Accepted:')) && !(await display.has('Leaderboard')));
+    ok('the presenter sees the review screen, which has nothing to check here (the typed answers were accepted)', (await presenter.has('REVIEW')) && (await presenter.has('Nothing to check')));
+    ok("...and can't start another round or complete the quiz yet", !(await presenter.has('Complete Quiz & Save')) && (await presenter.count('.rd-round button')) === 0);
+    await presenter.clickText('Finish Review');
     await ann.waitText('this round');
     ok("the player's review shows 3 / 3 and their typed answer graded correct", (await ann.has('3 / 3')) && (await ann.has('jupitar')));
     ok('the leaderboard appears for the player and the display after a normal round', (await ann.count('.leaderboard-row')) === 3 && (await ann.eval(`document.querySelector('.leaderboard-row.is-you')?.innerText.includes('Ann')`)));
@@ -119,6 +129,8 @@ await runSuite(
     await presenter.waitText('2 of 3 players have submitted');
     await presenter.clickText('End Round');
     await confirmDialog(presenter);
+    await presenter.waitText('nothing to review');
+    await presenter.clickText('Finish Review');
     await ann.waitText('this round');
     await sleep(600);
     ok('after the final round the player gets no standings until the quiz is completed', !(await ann.visible('.round-leaderboard')) && (await ann.has('final standings will be revealed')));

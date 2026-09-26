@@ -87,6 +87,17 @@
           @submitAccepted="onRoundSubmitAccepted"
           @unanswered="onRoundUnanswered"
         />
+        <!-- The round has closed and the presenter is checking the typed answers -->
+        <!-- (hidden standings mode skips the waiting notice: straight to "results are hidden until the end") -->
+        <RoundReview
+          v-else-if="roundPhase === 'review' && roundReview && roundReview.hidden"
+          :ended="{ ...roundReview, questions: [], standings: null }"
+          :youName="currentDisplayName || ''"
+        />
+        <RoundClosed
+          v-else-if="roundPhase === 'review' && roundReview"
+          :review="roundReview"
+        />
         <RoundReview
           v-else-if="roundPhase === 'ended' && roundLastEnded"
           :ended="roundLastEnded"
@@ -183,6 +194,7 @@
     <ProgressModal
       :isOpen="showProgressModalFlag"
       :questionHistory="progressItems"
+      :hidden="resultsHiddenForNow"
       @close="showProgressModalFlag = false"
     />
 
@@ -249,6 +261,7 @@ import PlayerNavbar from '@/components/player/PlayerNavbar.vue'
 import GameResults from '@/components/player/GameResults.vue'
 import RoundQuestions from '@/components/rounds/RoundQuestions.vue'
 import RoundReview from '@/components/rounds/RoundReview.vue'
+import RoundClosed from '@/components/rounds/RoundClosed.vue'
 import QuestionDisplay from '@/components/player/QuestionDisplay.vue'
 import WaitingDisplay from '@/components/player/WaitingDisplay.vue'
 import ReconnectingDisplay from '@/components/player/ReconnectingDisplay.vue'
@@ -271,6 +284,8 @@ const {
   current: roundCurrent,
   progress: roundProgress,
   lastEnded: roundLastEnded,
+  review: roundReview,
+  hiddenStandings: roundsHiddenStandings,
   myDraft: roundDraft,
   mySubmittedAnswers: roundSubmittedAnswers,
   submitAckVersion: roundSubmitAckVersion,
@@ -1086,8 +1101,12 @@ const setupSocketListeners = () => {
 // What the Progress modal lists. A round quiz has no per-question history, so build it from the
 // rounds already finished, plus the open round's questions marked "in progress" (their answers
 // stay hidden until the round ends).
+// Hidden standings mode: no answers or results anywhere until the quiz is completed
+const resultsHiddenForNow = computed(() => roundsEnabled.value && roundsHiddenStandings.value && !quizCompleted.value)
+
 const progressItems = computed(() => {
   if (!roundsEnabled.value) return questionHistory.value
+  if (resultsHiddenForNow.value) return []
 
   const items = []
   for (const round of roundHistory.value) {

@@ -26,8 +26,9 @@
 
       <!-- Rounds (v5.16.0): the round's questions while it runs, then the leaderboard -->
       <RoundProjector
-        v-else-if="(roundPhase === 'open' && roundCurrent) || (roundPhase === 'ended' && roundLastEnded)"
+        v-else-if="(roundPhase === 'open' && roundCurrent) || (roundPhase === 'review' && roundReview) || (roundPhase === 'ended' && roundLastEnded)"
         :phase="roundPhase"
+        :review="roundReview"
         :current="roundCurrent"
         :progress="roundProgress"
         :lastEnded="roundLastEnded"
@@ -145,7 +146,7 @@ import RoundProjector from '@/components/rounds/RoundProjector.vue'
 const route = useRoute()
 const socket = useSocket()
 const rounds = useRounds(socket)
-const { phase: roundPhase, current: roundCurrent, progress: roundProgress, lastEnded: roundLastEnded } = rounds
+const { phase: roundPhase, current: roundCurrent, progress: roundProgress, lastEnded: roundLastEnded, review: roundReview } = rounds
 const uiStore = useUIStore()
 
 // Initialize theme for DisplayPage (grey theme default)

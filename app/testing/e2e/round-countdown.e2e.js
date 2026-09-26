@@ -36,7 +36,7 @@ await runSuite(
     const ann = await env.player('Ann', { room, height: 480 }); // a short screen, so the round has to be scrolled
     const bob = env.bot();
     bob.emit('joinRoom', { roomCode: room, username: 'bob_cd', displayName: 'Bob', playerID: bob.playerID });
-    await presenter.waitText('2 player(s)');
+    await presenter.waitText('Connected (2)'); // this room's own list (other rooms in the sidebar also say "N player(s)")
 
     section('An untimed round offers a countdown');
     await presenter.clickText('Start');
@@ -93,9 +93,11 @@ await runSuite(
     await presenter.clickText('Start', '.rd-countdown-custom button');
     await ann.waitFor(`!!document.querySelector('.timer-bar')`);
     const startedAt = Date.now();
-    await ann.waitText('this round', { timeout: 25000 });
+    await ann.waitText('checking the answers', { timeout: 25000 });
     const took = (Date.now() - startedAt) / 1000;
     ok('the round ended on its own after about 10 seconds', took > 6 && took < 20, `${took.toFixed(1)}s`);
+    await presenter.clickText('Finish Review'); // the presenter checks the answers, then the results go out
+    await ann.waitText('this round');
     ok("the player's unsent answers were submitted for them and counted (2 / 2)", await ann.has('2 / 2'));
     ok("the review says time's up", await ann.has("time's up"));
     await presenter.waitText('Leaderboard after Round 1');

@@ -19,7 +19,7 @@
  *   "end round" and the timer, so a timer expiry racing a submit can't double-finalize.
  */
 
-import { isAnswerCorrect } from '../utils/grading.js';
+import { gradeAnswer, isAnswerCorrect } from '../utils/grading.js';
 import { ROUND_CONSTRAINTS } from '../config/constants.js';
 
 const DEBUG_ENABLED = process.env.DEBUG_MODE === 'true';
@@ -71,7 +71,8 @@ class RoundService {
 
   /**
    * Fresh round state for a new room.
-   * phase: 'idle' (nothing played yet) | 'open' (a round is running) | 'ended' (between rounds)
+   * phase: 'idle' (nothing played yet) | 'open' (a round is running) | 'review' (a round has closed and the
+   * presenter is checking the typed answers) | 'ended' (results sent, between rounds)
    * @returns {object}
    */
   createState() {
@@ -82,6 +83,9 @@ class RoundService {
       endsAt: null,
       countdownSeconds: null, // an untimed round the presenter set a countdown on: how long it runs for
       countdownStartedAt: null,
+      reviewIndex: null, // the round being reviewed (phase 'review')
+      reviewReason: null,
+      pending: null, // { [username]: answers } of the closed round, recorded when the review is finished
       completed: [],
       lastEndedIndex: null,
       lastEndedReason: null,
@@ -168,6 +172,7 @@ class RoundService {
 
     const state = room.rounds;
     if (state.phase === 'open') return { ok: false, message: 'A round is already in progress' };
+    if (state.phase === 'review') return { ok: false, message: 'Finish reviewing the last round first' };
 
     const round = room.quizData.rounds[roundIndex];
     if (!Number.isInteger(roundIndex) || !round) return { ok: false, message: 'Round not found' };
@@ -299,11 +304,13 @@ class RoundService {
   }
 
   /**
-   * End the open round: auto-submit drafts, record answers, reveal, and broadcast the
-   * results and leaderboard. Synchronous and idempotent (no-op unless a round is open).
+   * The open round is over (the presenter ended it or its timer ran out). Nothing is scored or shown
+   * to players yet: the round goes to the presenter for review first (typed answers the grader got
+   * wrong may be false negatives), and finishReview() then records the answers and sends the results.
+   * Synchronous and idempotent (no-op unless a round is open).
    * @param {string} roomCode - Room code
    * @param {'presenter'|'timeout'} reason - Why the round ended
-   * @returns {boolean} True if a round was finalized
+   * @returns {boolean} True if the round was closed
    */
   finalizeRound(roomCode, reason) {
     const room = this.roomService.getRoom(roomCode);
@@ -315,14 +322,55 @@ class RoundService {
     const roundIndex = state.current;
     const round = room.quizData.rounds[roundIndex];
 
-    // Record each player's answers (submitted or still a draft) as ordinary answers
+    // What counts for each player: the last submission. Edits made after submitting only count if
+    // they were submitted too. A player who never submitted has their latest draft auto-submitted.
+    state.pending = {};
     for (const player of Object.values(room.players)) {
       if (player.isSpectator) continue;
-      // What counts: the last submission. Edits made after submitting only count if they were
-      // submitted too. A player who never submitted has their latest draft auto-submitted.
-      const draft = state.submitted[player.username]
+      const answers = state.submitted[player.username]
         ? state.submittedAnswers[player.username]
         : state.drafts[player.username];
+      if (answers) state.pending[player.username] = answers;
+    }
+
+    state.phase = 'review';
+    state.reviewIndex = roundIndex;
+    state.reviewReason = reason;
+    state.current = null;
+    state.startedAt = null;
+    state.endsAt = null;
+    state.countdownSeconds = null;
+    state.countdownStartedAt = null;
+    state.drafts = {};
+    state.submitted = {};
+    state.submittedAnswers = {};
+    room.lastActivityAt = Date.now();
+
+    this.emitReview(roomCode, room);
+
+    if (DEBUG_ENABLED) console.log(`[Rounds] Room ${roomCode} closed round ${roundIndex} (${round.title}, ${reason}): in review`);
+    return true;
+  }
+
+  /**
+   * The presenter finished reviewing: record every player's answers as ordinary answers (with the
+   * grades the presenter settled), reveal the round, and send the results and leaderboard.
+   * Synchronous and idempotent (no-op unless a round is in review).
+   * @param {string} roomCode - Room code
+   * @returns {boolean} True if the review was finished
+   */
+  finishReview(roomCode) {
+    const room = this.roomService.getRoom(roomCode);
+    const state = room?.rounds;
+    if (!room || !state || state.phase !== 'review') return false;
+
+    const roundIndex = state.reviewIndex;
+    const round = room.quizData.rounds[roundIndex];
+    const reason = state.reviewReason || 'presenter';
+
+    for (const player of Object.values(room.players)) {
+      if (player.isSpectator) continue;
+      const draft = state.pending?.[player.username];
       if (!draft) continue;
 
       if (!player.answers) player.answers = {};
@@ -341,14 +389,9 @@ class RoundService {
 
     if (!state.completed.includes(roundIndex)) state.completed.push(roundIndex);
     state.phase = 'ended';
-    state.current = null;
-    state.startedAt = null;
-    state.endsAt = null;
-    state.countdownSeconds = null;
-    state.countdownStartedAt = null;
-    state.drafts = {};
-    state.submitted = {};
-    state.submittedAnswers = {};
+    state.reviewIndex = null;
+    state.reviewReason = null;
+    state.pending = null;
     state.lastEndedIndex = roundIndex;
     state.lastEndedReason = reason;
     room.lastActivityAt = Date.now();
@@ -363,8 +406,89 @@ class RoundService {
 
     this._persist(roomCode, room);
 
-    if (DEBUG_ENABLED) console.log(`[Rounds] Room ${roomCode} ended round ${roundIndex} (${reason})`);
+    if (DEBUG_ENABLED) console.log(`[Rounds] Room ${roomCode} finished reviewing round ${roundIndex}`);
     return true;
+  }
+
+  /**
+   * The typed answers of the round in review that the grader marked wrong, for the presenter to check
+   * for false negatives. `correct` is the grade as it stands now (true once the presenter accepted it).
+   * @param {object} room - Live room
+   * @returns {Array<{questionIndex: number, text: string, acceptedAnswers: object[], entries: object[]}>}
+   */
+  getReviewItems(room) {
+    const state = room.rounds;
+    const round = room.quizData.rounds[state.reviewIndex];
+    const threshold = this.quizOptions?.shortAnswerMatchThreshold ?? 0.85;
+    const items = [];
+
+    round.questionIndexes.forEach((globalIdx, k) => {
+      const question = room.quizData.questions[globalIdx];
+      if (question.type !== 'short_answer') return;
+
+      const entries = [];
+      for (const [username, answers] of Object.entries(state.pending || {})) {
+        const answer = answers[k];
+        if (typeof answer !== 'string' || answer === '') continue;
+        if (gradeAnswer(question, answer, threshold)) continue; // the grader accepted it: nothing to check
+
+        const override = room.answerOverrides?.[username]?.[globalIdx];
+        const player = Object.values(room.players).find((p) => p.username === username);
+        entries.push({ username, name: player?.name || username, answer, correct: override === true });
+      }
+      items.push({
+        questionIndex: globalIdx,
+        text: question.text,
+        acceptedAnswers: question.acceptedAnswers || [],
+        entries,
+      });
+    });
+    return items;
+  }
+
+  /** The answer a player gave to a question of the round in review (undefined if none). */
+  getReviewAnswer(room, username, questionIndex) {
+    const state = room.rounds;
+    if (state.phase !== 'review') return undefined;
+    const k = room.quizData.rounds[state.reviewIndex].questionIndexes.indexOf(questionIndex);
+    if (k === -1) return undefined;
+    return state.pending?.[username]?.[k] ?? undefined;
+  }
+
+  /**
+   * The review as sent to a recipient. The presenter gets the answers to check; everyone else only
+   * learns that the round is closed and being checked.
+   * @param {object} room - Live room
+   * @param {{isPresenter?: boolean}} [options]
+   * @returns {object}
+   */
+  buildReviewPayload(room, { isPresenter = false } = {}) {
+    const state = room.rounds;
+    const round = room.quizData.rounds[state.reviewIndex];
+    const payload = {
+      roundIndex: round.index,
+      title: round.title,
+      reason: state.reviewReason || 'presenter',
+      totalRounds: room.quizData.rounds.length,
+      isLastRound: room.quizData.rounds.length - state.completed.length <= 1,
+      // Hidden standings mode: players and the display go straight to "results are hidden until the end"
+      hidden: this._resultsHidden(room),
+    };
+    if (isPresenter) payload.items = this.getReviewItems(room);
+    return payload;
+  }
+
+  /**
+   * Tell everyone the round is closed: the presenter gets the review, the others a "checking answers"
+   * notice (`presenterOnly` re-sends just the presenter's copy after a grade was changed).
+   */
+  emitReview(roomCode, room, { presenterOnly = false } = {}) {
+    if (room.presenterId) {
+      this.io.to(room.presenterId).emit('roundReview', this.buildReviewPayload(room, { isPresenter: true }));
+      if (!presenterOnly) this.io.to(roomCode).except(room.presenterId).emit('roundReview', this.buildReviewPayload(room));
+    } else {
+      this.io.to(roomCode).emit('roundReview', this.buildReviewPayload(room));
+    }
   }
 
   /**
@@ -510,6 +634,7 @@ class RoundService {
         questionIndexes: r.questionIndexes,
         timeLimitSeconds: r.timeLimitSeconds,
       })),
+      hiddenStandings: !!room.hiddenStandings,
       phase: state.phase,
       nextRoundIndex: rounds.find((r) => !state.completed.includes(r.index))?.index ?? null,
       completed: [...state.completed],
@@ -533,6 +658,8 @@ class RoundService {
       if (isPresenter) snapshot.progress.submittedNames = this._namesFor(room, submittedUsernames);
     }
 
+    if (state.phase === 'review') snapshot.review = this.buildReviewPayload(room, { isPresenter });
+
     Object.assign(snapshot, this.buildResultsUpdate(room, { player, isPresenter }));
 
     return snapshot;
@@ -553,8 +680,8 @@ class RoundService {
     if (state.lastEndedIndex !== null) {
       const { base, rows } = this._buildEnded(room, state.lastEndedIndex, state.lastEndedReason || 'presenter');
       const hidden = !isPresenter && this._standingsHidden(room, base);
-      update.lastEnded = hidden ? { ...base, standings: null } : base;
-      const row = player && rows.find((r) => r.socketId === player.id);
+      update.lastEnded = isPresenter ? base : this._publicEnded(room, base);
+      const row = player && !this._resultsHidden(room) && rows.find((r) => r.socketId === player.id);
       if (row) {
         update.lastEnded = {
           ...update.lastEnded,
@@ -681,6 +808,7 @@ class RoundService {
    * rounds are included, so nothing here can reveal an open round's answers.
    */
   _historyFor(room, player) {
+    if (this._resultsHidden(room)) return []; // hidden standings mode: revealed once the quiz is completed
     const threshold = this.quizOptions?.shortAnswerMatchThreshold ?? 0.85;
     const rounds = room.quizData.rounds;
 
@@ -697,6 +825,36 @@ class RoundService {
   }
 
   /** One player's own answers and results for a finished round. */
+  /**
+   * Hidden standings mode: nothing about how anyone did (results, answers, standings) reaches players
+   * or the display until the presenter completes the quiz. The presenter always sees everything.
+   */
+  _resultsHidden(room) {
+    return !!room.hiddenStandings && room.status !== 'completed';
+  }
+
+  /** Public form of _resultsHidden, for the places outside this service that reveal answers. */
+  resultsHidden(room) {
+    return this.isRoundMode(room) && this._resultsHidden(room);
+  }
+
+  /** What players and the display get for a finished round: everything, no standings, or nothing at all. */
+  _publicEnded(room, base) {
+    if (this._resultsHidden(room)) {
+      return {
+        roundIndex: base.roundIndex,
+        title: base.title,
+        reason: base.reason,
+        totalRounds: base.totalRounds,
+        isLastRound: base.isLastRound,
+        questions: [],
+        standings: null,
+        hidden: true,
+      };
+    }
+    return this._standingsHidden(room, base) ? { ...base, standings: null } : base;
+  }
+
   /**
    * The last round's standings stay hidden from players and displays until the quiz is completed,
    * so the presenter decides when the final result is revealed. The presenter always sees them.
@@ -728,7 +886,8 @@ class RoundService {
     const round = room.quizData.rounds[roundIndex];
 
     const hidden = this._standingsHidden(room, base);
-    const publicBase = hidden ? { ...base, standings: null } : base;
+    const publicBase = this._publicEnded(room, base);
+    const resultsHidden = this._resultsHidden(room);
 
     // The presenter always gets the standings; the display and everyone else may not
     const excluded = rows.map((r) => r.socketId);
@@ -739,10 +898,9 @@ class RoundService {
     this.io.to(roomCode).except(excluded).emit('roundEnded', publicBase);
 
     for (const row of rows) {
-      this.io.to(row.socketId).emit('roundEnded', {
-        ...publicBase,
-        you: this._youFor(room, round, row, { hideStanding: hidden }),
-      });
+      this.io.to(row.socketId).emit('roundEnded', resultsHidden
+        ? publicBase // hidden standings mode: no personal result either, until the quiz is completed
+        : { ...publicBase, you: this._youFor(room, round, row, { hideStanding: hidden }) });
     }
   }
 

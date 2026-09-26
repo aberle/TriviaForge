@@ -293,6 +293,17 @@ async function setup({ quiz, chrome: wantChrome }) {
 // Helpers for the round-play screens
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A round closes into the presenter's review; results go out only when the presenter finishes it.
+ * Waits for the presenter bot to be told a round closed, then finishes the review (for tests that
+ * aren't about the review itself).
+ */
+export async function finishReviewOnClose(presenterBot, room, { since = 0, timeout = 40000 } = {}) {
+  const review = await presenterBot.waitFor('roundReview', { since, timeout });
+  presenterBot.emit('finishRoundReview', { roomCode: room, roundIndex: review.roundIndex });
+  return review;
+}
+
 /** Pick a choice by its text inside the question card at `cardIndex`. */
 export function pick(page, cardIndex, choiceText) {
   return page.eval(`(() => {
