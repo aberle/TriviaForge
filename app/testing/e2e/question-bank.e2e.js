@@ -95,6 +95,15 @@ await runSuite(
     await save({ rounds: [], questions: quiz.questions.filter((q) => q.id !== removed.id) });
     ok('it leaves the bank, and no other question is copied', !(await bank()).some((q) => q.question_text === removed.text) && (await bank()).length === 3, await summary());
 
+    section('Typed-answer questions need only one accepted answer');
+    const single = await env.createQuiz({ title: `Single ${TAG}`, questions: [Q.sa(`Bank ${TAG} the only accepted answer question`, ['Only answer'], undefined)] });
+    const singleQ = (await bank()).find((q) => q.question_text.includes('the only accepted answer'));
+    const edit = (id, question_type, answers) => env.api('PUT', `/api/questions/${id}`, { question_type, answers });
+    const oneAnswer = [{ answer_text: 'Only answer', is_correct: true, display_order: 0 }];
+    ok('editing a typed-answer question down to a single answer is accepted', (await edit(singleQ.id, 'short_answer', oneAnswer)).status === 200);
+    ok('a multiple-choice question with a single answer is still refused', (await edit(singleQ.id, 'multiple_choice', oneAnswer)).status === 400);
+    void single;
+
     section('A question shared with another quiz');
     const shared = (await bank()).find((q) => word(q.question_text) === 'Charlie' || word(q.question_text) === 'Delta');
     const other = await json('POST', '/api/questions/from-quiz-selection', { title: `Other ${TAG}`, questionIds: [shared.id] });

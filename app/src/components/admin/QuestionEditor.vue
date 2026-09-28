@@ -1,10 +1,5 @@
 <template>
-  <section class="question-editor-panel" @mousedown.stop="$emit('startResize', 2, $event)">
-    <div class="editor-header">
-      <h2>Question Editor</h2>
-      <button @click="$emit('clearForm')" class="btn-new-question" title="Start new question">+ New Question</button>
-    </div>
-
+  <section class="question-editor-panel">
     <div class="question-type-wrapper">
       <label for="questionType">Question Type:</label>
       <select
@@ -19,7 +14,7 @@
     </div>
 
     <div v-if="rounds.length > 0" class="question-type-wrapper">
-      <label for="questionRound">Round:</label>
+      <label for="questionRound">Add to round:</label>
       <select
         :value="roundIndex"
         @change="$emit('update:roundIndex', Number($event.target.value))"
@@ -166,7 +161,7 @@
 
     <div class="question-editor-buttons">
       <button @click="$emit('saveQuestion')" class="btn-primary">{{ editingQuestionIdx !== null ? 'Update' : 'Add' }}</button>
-      <button v-if="editingQuestionIdx !== null" @click="$emit('clearForm')" class="btn-secondary">Cancel</button>
+      <button @click="$emit('clearForm')" class="btn-secondary">Cancel</button>
     </div>
   </section>
 </template>
@@ -201,7 +196,6 @@ const emit = defineEmits([
   'removeChoice',
   'saveQuestion',
   'clearForm',
-  'startResize',
   'choiceDragStart',
   'choiceDragOver',
   'choiceDragLeave',
@@ -283,9 +277,6 @@ const handleChoiceDragEnd = () => {
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 
 .editor-header {

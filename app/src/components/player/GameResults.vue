@@ -40,6 +40,13 @@
       </div>
     </div>
 
+    <!-- Under the podium: the same Answer Statistics as the button at the top of the page -->
+    <div v-if="showStatsButton" class="stats-button-row">
+      <button type="button" class="stats-button" @click="$emit('showStats')">
+        <AppIcon name="bar-chart-3" size="md" /> Answer Statistics
+      </button>
+    </div>
+
     <!-- Full leaderboard: everyone, including the podium finishers. Ties share a rank. -->
     <div class="remaining-list" v-if="rankedPlayers.length > 0">
       <div class="remaining-header">
@@ -79,7 +86,11 @@
 import { computed, onMounted, ref } from 'vue';
 import AppIcon from '@/components/common/AppIcon.vue';
 
+defineEmits(['showStats'])
+
 const props = defineProps({
+  // The player's own page: a button under the podium opens their Answer Statistics
+  showStatsButton: { type: Boolean, default: false },
   players: {
     type: Array,
     required: true
@@ -141,6 +152,31 @@ const podiumTiers = computed(() =>
 </script>
 
 <style scoped>
+.stats-button-row {
+  display: flex;
+  justify-content: center;
+  margin: 1rem 0 1.5rem;
+}
+
+.stats-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid var(--info-light);
+  border-radius: 10px;
+  background: var(--info-bg-20);
+  color: var(--info-light);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stats-button:hover {
+  background: var(--info-bg-30, var(--info-bg-20));
+  color: var(--text-primary);
+}
+
 /* =============================================
    MEDAL / PODIUM COLOR TOKENS
    ============================================= */

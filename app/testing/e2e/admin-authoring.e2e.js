@@ -40,7 +40,6 @@ await runSuite(
     await openQuiz(TITLE, 5);
     ok('each round has a header, and questions sit under their round', (await admin.count('.round-header')) === 3 && (await admin.eval(`document.querySelectorAll('.round-group')[0].querySelectorAll('.question-item').length`)) === 3);
     ok('a timed round shows its limit and an untimed round shows it blank', (await admin.eval(`[...document.querySelectorAll('.round-time-input')].map(i => i.value).join('|')`)) === '90||');
-    ok('the question editor has a Round selector', await admin.visible('#questionRound'));
 
     section('Renaming a round');
     await admin.fill('.round-group:nth-of-type(1) .round-title-input', 'Warmup');

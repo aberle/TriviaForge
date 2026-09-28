@@ -204,6 +204,57 @@ export class Page {
   }
 
   /**
+   * Press on `selector[index]` and nudge the mouse until Chrome's own drag machinery picks it up.
+   * The low-level building block behind `realDrag`, exposed separately for tests that need to hold
+   * mid-drag (e.g. to watch an auto-scroll) before choosing where to drop.
+   * @returns {Promise<{started: boolean, cancelled: boolean, x: number, y: number}>} the source point
+   */
+  async beginDrag(selector, index) {
+    if (!this.dragging) {
+      this.dragging = { data: null };
+      await this.send('Input.setInterceptDrags', { enabled: true });
+      this.on('Input.dragIntercepted', (p) => (this.dragging.data = p.data));
+    }
+    this.dragging.data = null;
+    this.dragging.entered = false; // the drag's very first move must be a 'dragEnter', or Chrome ignores it
+    await this.eval(`window.__dragEnded = false; if (!window.__dragListener) { window.__dragListener = true; document.addEventListener('dragend', () => (window.__dragEnded = true), true); } true`);
+    const src = await this.center(selector, index);
+    await this.mouse('mouseMoved', src.x, src.y, { button: 'none' });
+    await this.mouse('mousePressed', src.x, src.y, { buttons: 1, clickCount: 1 });
+    for (let i = 1; i <= 5; i++) {
+      await this.mouse('mouseMoved', src.x + i * 3, src.y + i * 3, { buttons: 1 });
+      await sleep(30);
+    }
+    await sleep(200);
+    if (!this.dragging.data) {
+      await this.mouse('mouseReleased', src.x, src.y, { buttons: 0, clickCount: 1 });
+      return { started: false, cancelled: await this.eval('window.__dragEnded'), ...src };
+    }
+    return { started: true, cancelled: false, ...src };
+  }
+
+  /**
+   * Hover the point a drag started with `beginDrag` is now over. Fires the drag's first move as a
+   * `dragEnter` (Chrome silently ignores a `dragOver` with no prior `dragEnter` in the session) and
+   * every one after that as a `dragOver`, whatever element is under the point each time.
+   */
+  async dragOverPoint(x, y) {
+    const type = this.dragging.entered ? 'dragOver' : 'dragEnter';
+    this.dragging.entered = true;
+    await this.send('Input.dispatchDragEvent', { type, x, y, data: this.dragging.data });
+  }
+
+  /** Release a drag started with `beginDrag` at `(x, y)` (fires `dragover` then `drop`). */
+  async endDrag(x, y) {
+    await this.dragOverPoint(x, y);
+    await sleep(80);
+    const cancelled = await this.eval('window.__dragEnded');
+    await this.send('Input.dispatchDragEvent', { type: 'drop', x, y, data: this.dragging.data });
+    await this.mouse('mouseReleased', x, y, { buttons: 0, clickCount: 1 });
+    return { cancelled };
+  }
+
+  /**
    * Drag like a person does, through Chrome's own drag-and-drop machinery: press on the source, move
    * until the browser starts the drag, hover the target and release. (Dispatching DragEvents from a
    * script skips all of that, and misses bugs such as a drag that Chrome cancels because the layout
@@ -216,43 +267,21 @@ export class Page {
    *   before the drop, i.e. the browser abandoned the drag
    */
   async realDrag({ selector, index }, targetExpr) {
-    if (!this.dragging) {
-      this.dragging = { data: null };
-      await this.send('Input.setInterceptDrags', { enabled: true });
-      this.on('Input.dragIntercepted', (p) => (this.dragging.data = p.data));
-    }
-    this.dragging.data = null;
-    await this.eval(`window.__dragEnded = false; if (!window.__dragListener) { window.__dragListener = true; document.addEventListener('dragend', () => (window.__dragEnded = true), true); } true`);
-    const src = await this.center(selector, index);
-    await this.mouse('mouseMoved', src.x, src.y, { button: 'none' });
-    await this.mouse('mousePressed', src.x, src.y, { buttons: 1, clickCount: 1 });
-    for (let i = 1; i <= 5; i++) {
-      await this.mouse('mouseMoved', src.x + i * 3, src.y + i * 3, { buttons: 1 });
-      await sleep(30);
-    }
-    await sleep(200);
-    if (!this.dragging.data) {
-      await this.mouse('mouseReleased', src.x, src.y, { buttons: 0, clickCount: 1 });
-      return { started: false, cancelled: await this.eval('window.__dragEnded') };
-    }
-    const data = this.dragging.data;
+    const begun = await this.beginDrag(selector, index);
+    if (!begun.started) return { started: false, cancelled: begun.cancelled };
     const target = await this.eval(targetExpr);
     const steps = 8;
     for (let i = 1; i <= steps; i++) {
-      const x = src.x + ((target.x - src.x) * i) / steps;
-      const y = src.y + ((target.y - src.y) * i) / steps;
-      await this.send('Input.dispatchDragEvent', { type: i === 1 ? 'dragEnter' : 'dragOver', x, y, data });
+      const x = begun.x + ((target.x - begun.x) * i) / steps;
+      const y = begun.y + ((target.y - begun.y) * i) / steps;
+      await this.dragOverPoint(x, y);
       await sleep(40);
     }
-    await this.send('Input.dispatchDragEvent', { type: 'dragOver', x: target.x, y: target.y, data });
-    await sleep(80);
-    const cancelled = await this.eval('window.__dragEnded');
-    await this.send('Input.dispatchDragEvent', { type: 'drop', x: target.x, y: target.y, data });
-    await this.mouse('mouseReleased', target.x, target.y, { buttons: 0, clickCount: 1 });
+    const { cancelled } = await this.endDrag(target.x, target.y);
     return { started: true, cancelled };
   }
 
-  /** Where to click an element: its centre-left, scrolled into view. */
+  /** Where to click an element: its centre-left, scrolled into view. */  /** Where to click an element: its centre-left, scrolled into view. */
   center(selector, index = 0) {
     return this.eval(`(() => {
       const e = document.querySelectorAll(${JSON.stringify(selector)})[${index}];

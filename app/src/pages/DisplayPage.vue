@@ -20,7 +20,7 @@
           Results in <span class="countdown-number">{{ resultsCountdown }}</span>...
         </p>
         <p v-else class="complete-subtitle">
-          Check your <strong>Progress</strong> to see how you did!
+          Check your <strong>Answer Statistics</strong> to see how you did!
         </p>
       </div>
 

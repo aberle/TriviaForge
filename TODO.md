@@ -69,7 +69,7 @@
 
 **Known gaps / follow-ups:**
 - Solo play ignores rounds; "create quiz from selection" produces quizzes without rounds (Excel import supports rounds through a Round column and a Rounds sheet)
-- The player Progress modal doesn't list round questions until the player rejoins (it also predates short-answer support)
+- The player Answer Statistics modal (formerly Progress) doesn't list round questions until the player rejoins (it also predates short-answer support)
 - Open-round drafts are not persisted across a server restart; a resumed session starts between rounds
 - The presenter's Standings modal groups nothing by round
 - The admin round UI has only been checked through the API and server-side rendering, not clicked through in a browser

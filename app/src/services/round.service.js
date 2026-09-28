@@ -83,6 +83,8 @@ class RoundService {
       endsAt: null,
       countdownSeconds: null, // an untimed round the presenter set a countdown on: how long it runs for
       countdownStartedAt: null,
+      reopened: false, // the presenter re-opened this round from its review: it has no time limit now
+      reviewedAnswers: null, // the answers as they were when it was re-opened (grades of changed answers are dropped)
       reviewIndex: null, // the round being reviewed (phase 'review')
       reviewReason: null,
       pending: null, // { [username]: answers } of the closed round, recorded when the review is finished
@@ -184,6 +186,8 @@ class RoundService {
     state.endsAt = round.timeLimitSeconds ? state.startedAt + round.timeLimitSeconds * 1000 : null;
     state.countdownSeconds = null;
     state.countdownStartedAt = null;
+    state.reopened = false;
+    state.reviewedAnswers = null;
     state.drafts = {};
     state.submitted = {};
     state.submittedAnswers = {};
@@ -214,7 +218,7 @@ class RoundService {
     if (!this.isRoundMode(room) || state.phase !== 'open' || roundIndex !== state.current) {
       return { ok: false, message: 'That round is not open' };
     }
-    if (room.quizData.rounds[state.current].timeLimitSeconds) {
+    if (room.quizData.rounds[state.current].timeLimitSeconds && !state.reopened) {
       return { ok: false, message: 'This round already has a time limit' };
     }
     if (state.countdownSeconds) return { ok: false, message: 'A countdown is already running' };
@@ -333,6 +337,20 @@ class RoundService {
       if (answers) state.pending[player.username] = answers;
     }
 
+    // The round was re-opened from a review: grades the presenter settled for an answer that has
+    // since been changed no longer apply to the new answer
+    if (state.reviewedAnswers && room.answerOverrides) {
+      round.questionIndexes.forEach((globalIdx, k) => {
+        for (const [username, overrides] of Object.entries(room.answerOverrides)) {
+          if (overrides[globalIdx] === undefined) continue;
+          if ((state.pending[username]?.[k] ?? null) !== (state.reviewedAnswers[username]?.[k] ?? null)) delete overrides[globalIdx];
+          if (Object.keys(overrides).length === 0) delete room.answerOverrides[username];
+        }
+      });
+    }
+    state.reviewedAnswers = null;
+    state.reopened = false;
+
     state.phase = 'review';
     state.reviewIndex = roundIndex;
     state.reviewReason = reason;
@@ -350,6 +368,63 @@ class RoundService {
 
     if (DEBUG_ENABLED) console.log(`[Rounds] Room ${roomCode} closed round ${roundIndex} (${round.title}, ${reason}): in review`);
     return true;
+  }
+
+  /**
+   * The presenter re-opens the round they are reviewing, so players can add or change answers. Everyone
+   * keeps the answers they had (all counted as submitted), the round has no time limit (the presenter
+   * can start a countdown), and ending it goes back to a review. Synchronous and idempotent.
+   * @param {string} roomCode - Room code
+   * @returns {boolean} True if the round was re-opened
+   */
+  reopenRound(roomCode) {
+    const room = this.roomService.getRoom(roomCode);
+    const state = room?.rounds;
+    if (!room || !state || state.phase !== 'review') return false;
+
+    const roundIndex = state.reviewIndex;
+    const pending = state.pending || {};
+
+    state.reviewedAnswers = JSON.parse(JSON.stringify(pending));
+    state.phase = 'open';
+    state.current = roundIndex;
+    state.startedAt = Date.now();
+    state.endsAt = null;
+    state.countdownSeconds = null;
+    state.countdownStartedAt = null;
+    state.reopened = true;
+    state.drafts = {};
+    state.submitted = {};
+    state.submittedAnswers = {};
+    for (const [username, answers] of Object.entries(pending)) {
+      state.drafts[username] = [...answers];
+      state.submittedAnswers[username] = [...answers];
+      state.submitted[username] = true;
+    }
+    state.pending = null;
+    state.reviewIndex = null;
+    state.reviewReason = null;
+    room.lastActivityAt = Date.now();
+
+    this.broadcastSnapshot(roomCode, room);
+    this.emitProgress(roomCode, room);
+
+    if (DEBUG_ENABLED) console.log(`[Rounds] Room ${roomCode} re-opened round ${roundIndex}`);
+    return true;
+  }
+
+  /** Send everyone the full round state (each player their own): used when the phase changes back. */
+  broadcastSnapshot(roomCode, room) {
+    const players = Object.entries(room.players).filter(([, p]) => !p.isSpectator);
+    const excluded = players.map(([socketId]) => socketId);
+    if (room.presenterId) {
+      excluded.push(room.presenterId);
+      this.io.to(room.presenterId).emit('roundState', this.buildSnapshot(room, { isPresenter: true }));
+    }
+    this.io.to(roomCode).except(excluded).emit('roundState', this.buildSnapshot(room));
+    for (const [socketId, player] of players) {
+      this.io.to(socketId).emit('roundState', this.buildSnapshot(room, { player: { ...player, id: socketId } }));
+    }
   }
 
   /**
@@ -586,7 +661,8 @@ class RoundService {
     const round = room.quizData.rounds[state.current];
     return {
       roundIndex: round.index,
-      timeLimitSeconds: round.timeLimitSeconds || state.countdownSeconds || null,
+      // a re-opened round has no time limit of its own (its timer already ran out); the presenter can start a countdown
+      timeLimitSeconds: (state.reopened ? null : round.timeLimitSeconds) || state.countdownSeconds || null,
       countdown: !!state.countdownSeconds,
       serverNow: Date.now(),
       startedAt: state.countdownStartedAt ?? state.startedAt,

@@ -30,8 +30,15 @@ axios.defaults.adapter = async (config) => {
   if (config.url === '/api/csrf-token') return res({ csrfToken: 't' });
   if (config.url === '/api/quizzes' && method === 'get') return res([{ id: 1, filename: quiz.filename, title: quiz.title, description: '', questionCount: quiz.questions.length, roundCount: quiz.rounds.length }]);
   if (config.url === `/api/quizzes/${quiz.filename}` && method === 'get') return res(JSON.parse(JSON.stringify(quiz)));
-  if (config.url === `/api/quizzes/${quiz.filename}` && method === 'put') {
+  // A quiz is saved by its filename (full save) or by its id (title/description, availability: metadata only)
+  if ((config.url === `/api/quizzes/${quiz.filename}` || config.url === '/api/quizzes/1') && method === 'put') {
     puts.push(body);
+    if (body.questions === undefined) {
+      // Metadata-only update: questions and rounds are left alone
+      if (body.title !== undefined) quiz.title = body.title;
+      if (body.description !== undefined) quiz.description = body.description;
+      return res({ success: true });
+    }
     const check = validateRounds(body.rounds, body.questions);
     if (!check.valid) { const err = new Error(check.error); err.response = { status: 400, data: {} }; throw err; }
     quiz.title = body.title; quiz.rounds = body.rounds || [];
@@ -117,6 +124,39 @@ await new Promise((r) => setTimeout(r, 80)); // saveQuestion reloads without awa
 const added = s.currentQuestions.find((x) => x.text === 'Brand new question');
 ok('a new question is saved into the selected round', added?.roundIndex === 1 && s.currentQuestions.map((x) => x.roundIndex).join() === '0,0,1,1,2,2', state());
 
+// a typed-answer question needs only one accepted answer; other types still need two choices
+const putsBeforeShort = puts.length;
+s.questionText = 'Name the largest planet in our solar system';
+s.questionType = 'short_answer';
+s.choices = ['Jupiter', '', '', ''];
+s.questionRoundIndex = 0;
+await s.saveQuestion();
+await new Promise((r) => setTimeout(r, 80));
+const shortSaved = puts.length === putsBeforeShort + 1 && puts.at(-1).questions.some((x) => x.text.startsWith('Name the largest planet') && x.type === 'short_answer');
+ok('a typed-answer question with a single accepted answer saves', shortSaved, `${puts.length - putsBeforeShort} save(s)`);
+const putsBeforeMc = puts.length;
+s.questionText = 'A multiple choice question with one choice';
+s.questionType = 'multiple_choice';
+s.choices = ['Only one', '', '', ''];
+await s.saveQuestion();
+await new Promise((r) => setTimeout(r, 80));
+ok('a multiple-choice question with a single choice is still refused', puts.length === putsBeforeMc);
+s.questionType = 'short_answer';
+s.choices = ['', '', '', ''];
+await s.saveQuestion();
+ok('a typed-answer question with no answer at all is refused', puts.length === putsBeforeMc);
+s.choices = ['One', 'Two', '', ''];
+s.handleDialogConfirm?.();
+await s.removeChoice(); await s.removeChoice(); await s.removeChoice();
+ok('the answers can be removed down to one for a typed-answer question', s.choices.length === 1, String(s.choices.length));
+s.questionType = 'multiple_choice';
+s.choices = ['a', 'b', 'c'];
+await s.removeChoice(); await s.removeChoice(); await s.removeChoice();
+ok('...but not below two for the other types', s.choices.length === 2, String(s.choices.length));
+s.questionText = '';
+s.questionType = 'multiple_choice';
+s.choices = ['', '', '', ''];
+
 // delete the middle round: its questions join the previous round, later rounds shift down
 const lenBefore = s.currentQuestions.length;
 await confirmDialog(s.deleteRound(1));
@@ -126,11 +166,43 @@ ok('deleting the first round merges into the next', s.currentRounds.length === 1
 await confirmDialog(s.deleteRound(0));
 ok('deleting the only round returns to a flat quiz', s.currentRounds.length === 0 && s.currentQuestions.length === lenBefore && puts.at(-1).questions.every((x) => !('roundIndex' in x)), state());
 
-// title edit on a round quiz must not drop rounds
+// Editing a quiz's title and description (from its menu) sends only those two fields: the rounds and
+// questions are not part of the request, so they cannot be dropped
 await s.enableRounds(); await s.addRound();
-s.quizTitle = 'Renamed quiz';
-await s.saveQuizTitle();
-ok('saving the quiz title keeps its rounds', quiz.rounds.length === 2 && puts.at(-1).rounds.length === 2 && quiz.title === 'Renamed quiz', state());
+const roundsBefore = quiz.rounds.length;
+const questionsBefore = quiz.questions.length;
+s.openEditQuizDetails(s.quizzes[0]);
+ok('the edit dialog opens with the quiz\'s current title', s.showEditQuizModal === true && s.editQuizTitle === quiz.title, s.editQuizTitle);
+s.editQuizTitle = 'Renamed quiz';
+s.editQuizDescription = 'A new description';
+await s.saveQuizDetails();
+ok('saving the title and description changes only those, and keeps the rounds and questions', quiz.title === 'Renamed quiz' && quiz.description === 'A new description' && quiz.rounds.length === roundsBefore && quiz.questions.length === questionsBefore && puts.at(-1).questions === undefined && puts.at(-1).rounds === undefined, JSON.stringify(puts.at(-1)));
+ok('the dialog closes and the open quiz shows the new title', s.showEditQuizModal === false && s.quizTitle === 'Renamed quiz', s.quizTitle);
+s.openEditQuizDetails(s.quizzes[0]);
+s.editQuizTitle = '   ';
+const putsBeforeBlank = puts.length;
+await s.saveQuizDetails();
+ok('a blank title is not saved', puts.length === putsBeforeBlank);
+s.closeEditQuizDetails();
+
+// The question editor is a modal: New Question opens it with the round most recently used preselected
+s.openNewQuestion();
+ok('New Question opens the editor modal on an empty form', s.showQuestionModal === true && s.editingQuestionIdx === null && s.questionText === '');
+s.questionText = 'A question added to the last round';
+s.choices = ['x', 'y', '', ''];
+s.correctChoice = 0;
+s.questionType = 'multiple_choice';
+s.questionRoundIndex = 1;
+await s.saveQuestion();
+await new Promise((r) => setTimeout(r, 80));
+ok('saving closes the modal', s.showQuestionModal === false);
+s.openNewQuestion();
+ok('the next New Question has that round (the most recently used) preselected', s.questionRoundIndex === 1, String(s.questionRoundIndex));
+s.closeQuestionModal();
+ok('closing the modal discards the form', s.showQuestionModal === false && s.questionText === '');
+s.editQuestion(0);
+ok('clicking a question opens the modal to edit it, on its own round', s.showQuestionModal === true && s.editingQuestionIdx === 0 && s.questionRoundIndex === (s.currentQuestions[0].roundIndex ?? 0));
+s.closeQuestionModal();
 
 await server.close();
 process.exit(t.finish() ? 0 : 1);

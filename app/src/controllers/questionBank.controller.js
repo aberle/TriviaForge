@@ -347,12 +347,14 @@ export async function updateQuestion(req, res) {
 
     // Update answers if provided
     if (answers && Array.isArray(answers)) {
-      // Validate answers
-      if (answers.length < 2) {
-        throw new BadRequestError('Question must have at least 2 answers');
+      // Validate answers. A typed-answer question needs one accepted answer (every answer is accepted);
+      // the others need at least two choices, one of them correct.
+      const isShortAnswer = (question_type ?? existing.rows[0].question_type) === 'short_answer';
+      if (answers.length < (isShortAnswer ? 1 : 2)) {
+        throw new BadRequestError(isShortAnswer ? 'Question must have at least 1 accepted answer' : 'Question must have at least 2 answers');
       }
 
-      const hasCorrect = answers.some((a) => a.is_correct);
+      const hasCorrect = isShortAnswer || answers.some((a) => a.is_correct);
       if (!hasCorrect) {
         throw new BadRequestError('Question must have at least one correct answer');
       }

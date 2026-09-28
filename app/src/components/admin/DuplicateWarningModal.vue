@@ -222,7 +222,7 @@ const handleContinue = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: calc(var(--z-modal) + 10); /* above the question editor modal, which it interrupts */
 }
 
 .duplicate-warning-modal {

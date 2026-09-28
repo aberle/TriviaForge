@@ -21,12 +21,8 @@
       <!-- Quiz Management Tab -->
       <div v-if="activeTab === 'quiz'" class="tab-content quiz-management">
         <QuizSidebar
-          v-model:quizTitle="quizTitle"
-          v-model:quizDescription="quizDescription"
-          :originalQuizTitle="originalQuizTitle"
-          :originalQuizDescription="originalQuizDescription"
-          :hasQuizSelected="!!selectedQuiz"
           :quizzes="quizzes"
+          :selectedQuiz="selectedQuiz"
           :importStatus="importStatus"
           @createQuiz="showCreateQuizModal"
           @downloadTemplate="downloadTemplate"
@@ -35,46 +31,18 @@
           @deleteQuiz="deleteQuiz"
           @toggleAvailability="handleToggleAvailability"
           @startResize="startResize"
-          @saveQuizTitle="saveQuizTitle"
-          @saveQuizDescription="saveQuizDescription"
-          @cancelQuizTitle="cancelQuizTitle"
-          @cancelQuizDescription="cancelQuizDescription"
-        />
-
-        <QuestionEditor
-          v-model:questionText="questionText"
-          v-model:correctChoice="correctChoice"
-          v-model:questionType="questionType"
-          v-model:imageUrl="imageUrl"
-          v-model:imageType="imageType"
-          v-model:roundIndex="questionRoundIndex"
-          :rounds="currentRounds"
-          :choices="choices"
-          :editingQuestionIdx="editingQuestionIdx"
-          :draggedChoiceIdx="draggedChoiceIdx"
-          :dragOverChoiceIdx="dragOverChoiceIdx"
-          @updateChoice="updateChoice"
-          @addChoice="addChoice"
-          @removeChoice="removeChoice"
-          @saveQuestion="saveQuestion"
-          @clearForm="clearQuestionForm"
-          @startResize="startResize"
-          @choiceDragStart="handleChoiceDragStart"
-          @choiceDragOver="handleChoiceDragOver"
-          @choiceDragLeave="handleChoiceDragLeave"
-          @choiceDrop="handleChoiceDrop"
-          @choiceDragEnd="handleChoiceDragEnd"
-          @setChoicesForType="setChoicesForType"
-          @uploadImage="handleImageUpload"
+          @editQuizDetails="openEditQuizDetails"
         />
 
         <QuestionsList
+          v-if="selectedQuiz"
           :questions="currentQuestions"
           :rounds="currentRounds"
           :selectedQuiz="selectedQuiz"
           :editingQuestionIdx="editingQuestionIdx"
           :draggedQuestionIdx="draggedQuestionIdx"
           :dragOverTarget="dragOverTarget"
+          @newQuestion="openNewQuestion"
           @shuffleQuestions="shuffleQuestions"
           @shuffleAllChoices="shuffleAllChoices"
           @enableRounds="enableRounds"
@@ -93,6 +61,10 @@
           @questionDrop="handleDrop"
           @questionDragEnd="handleDragEnd"
         />
+        <div v-else class="select-quiz-hint">
+          <AppIcon name="list-checks" size="2xl" />
+          <p>Select or create a quiz to see and edit its questions.</p>
+        </div>
       </div>
 
       <!-- Question Bank Tab -->
@@ -190,6 +162,54 @@
     </main>
 
     <!-- Dialog Modal -->
+    <!-- Question editor: opens for "+ New Question" and when a question is clicked -->
+    <Modal
+      :isOpen="showQuestionModal"
+      :title="editingQuestionIdx !== null ? 'Edit Question' : 'New Question'"
+      size="large"
+      @close="closeQuestionModal"
+    >
+      <QuestionEditor
+        v-model:questionText="questionText"
+        v-model:correctChoice="correctChoice"
+        v-model:questionType="questionType"
+        v-model:imageUrl="imageUrl"
+        v-model:imageType="imageType"
+        v-model:roundIndex="questionRoundIndex"
+        :rounds="currentRounds"
+        :choices="choices"
+        :editingQuestionIdx="editingQuestionIdx"
+        :draggedChoiceIdx="draggedChoiceIdx"
+        :dragOverChoiceIdx="dragOverChoiceIdx"
+        @updateChoice="updateChoice"
+        @addChoice="addChoice"
+        @removeChoice="removeChoice"
+        @saveQuestion="saveQuestion"
+        @clearForm="closeQuestionModal"
+        @choiceDragStart="handleChoiceDragStart"
+        @choiceDragOver="handleChoiceDragOver"
+        @choiceDragLeave="handleChoiceDragLeave"
+        @choiceDrop="handleChoiceDrop"
+        @choiceDragEnd="handleChoiceDragEnd"
+        @setChoicesForType="setChoicesForType"
+        @uploadImage="handleImageUpload"
+      />
+    </Modal>
+
+    <!-- Edit a quiz's title and description (from the quiz's menu) -->
+    <Modal :isOpen="showEditQuizModal" title="Edit Quiz Title and Description" size="medium" @close="closeEditQuizDetails">
+      <form class="edit-quiz-form" @submit.prevent="saveQuizDetails">
+        <label for="editQuizTitle">Title</label>
+        <input id="editQuizTitle" v-model="editQuizTitle" type="text" placeholder="Quiz Title" maxlength="200" />
+        <label for="editQuizDescription">Description</label>
+        <textarea id="editQuizDescription" v-model="editQuizDescription" placeholder="Quiz Description" rows="4"></textarea>
+        <div class="edit-quiz-buttons">
+          <button type="submit" class="btn-primary" :disabled="!editQuizTitle.trim()">Save</button>
+          <button type="button" class="btn-secondary" @click="closeEditQuizDetails">Cancel</button>
+        </div>
+      </form>
+    </Modal>
+
     <Modal :isOpen="showDialog" size="small" :title="dialogTitle" @close="handleDialogCancel">
       <p class="dialog-message">{{ dialogMessage }}</p>
       <div v-if="dialogShowInput" class="dialog-input-wrapper">
@@ -530,7 +550,6 @@ const newBackupCodes = ref([])
 
 // Column resizing
 const col1Width = ref(280)
-const col2Width = ref(450)
 const resizingColumn = ref(null)
 
 // Dialog state
@@ -546,8 +565,6 @@ const quizzes = ref([])
 const selectedQuiz = ref(null)
 const quizTitle = ref('')
 const quizDescription = ref('')
-const originalQuizTitle = ref('')
-const originalQuizDescription = ref('')
 const questionText = ref('')
 const choices = ref(['', '', '', ''])
 const correctChoice = ref(0)
@@ -657,15 +674,12 @@ const selectQuiz = async (quiz) => {
   selectedQuiz.value = quiz
   quizTitle.value = quiz.title
   quizDescription.value = quiz.description || ''
-  // Track original values for change detection
-  originalQuizTitle.value = quiz.title
-  originalQuizDescription.value = quiz.description || ''
 
   try {
     const response = await get(`/api/quizzes/${quiz.filename}`)
     currentQuestions.value = response.data.questions || []
     currentRounds.value = response.data.rounds || []
-    if (!isSameQuiz) questionRoundIndex.value = 0
+    if (!isSameQuiz) questionRoundIndex.value = lastUsedRound(quiz)
     questionRoundIndex.value = Math.min(questionRoundIndex.value, Math.max(0, currentRounds.value.length - 1))
   } catch (err) {
     console.error('Error loading quiz questions:', err)
@@ -717,40 +731,42 @@ const saveAndReload = async (questions, rounds, errorMessage) => {
   }
 }
 
-// Save just the quiz title
-const saveQuizTitle = async () => {
-  if (!selectedQuiz.value) return
+// Edit a quiz's title and description (from the quiz's menu). Only these two fields are sent:
+// the quiz's questions and rounds are not touched.
+const showEditQuizModal = ref(false)
+const editQuizTarget = ref(null)
+const editQuizTitle = ref('')
+const editQuizDescription = ref('')
+
+const openEditQuizDetails = (quiz) => {
+  editQuizTarget.value = quiz
+  editQuizTitle.value = quiz.title || ''
+  editQuizDescription.value = quiz.description || ''
+  showEditQuizModal.value = true
+}
+
+const closeEditQuizDetails = () => {
+  showEditQuizModal.value = false
+  editQuizTarget.value = null
+}
+
+const saveQuizDetails = async () => {
+  const quiz = editQuizTarget.value
+  const title = editQuizTitle.value.trim()
+  if (!quiz || !title) return
   try {
-    await persistQuiz()
-    originalQuizTitle.value = quizTitle.value
+    await put(`/api/quizzes/${quiz.id}`, { title, description: editQuizDescription.value })
+    // The quiz being edited may be the one open in the questions panel
+    if (selectedQuiz.value?.id === quiz.id) {
+      quizTitle.value = title
+      quizDescription.value = editQuizDescription.value
+    }
+    closeEditQuizDetails()
     await loadQuizzes()
-    showAlert('Quiz title updated')
+    if (selectedQuiz.value) selectedQuiz.value = quizzes.value.find(q => q.id === selectedQuiz.value.id) || selectedQuiz.value
   } catch (err) {
-    showAlert('Error updating quiz title: ' + err.message, 'Error')
+    showAlert('Error updating quiz: ' + err.message, 'Error')
   }
-}
-
-// Save just the quiz description
-const saveQuizDescription = async () => {
-  if (!selectedQuiz.value) return
-  try {
-    await persistQuiz()
-    originalQuizDescription.value = quizDescription.value
-    await loadQuizzes()
-    showAlert('Quiz description updated')
-  } catch (err) {
-    showAlert('Error updating quiz description: ' + err.message, 'Error')
-  }
-}
-
-// Cancel title change and revert to original
-const cancelQuizTitle = () => {
-  quizTitle.value = originalQuizTitle.value
-}
-
-// Cancel description change and revert to original
-const cancelQuizDescription = () => {
-  quizDescription.value = originalQuizDescription.value
 }
 
 const deleteQuiz = async (filename) => {
@@ -936,7 +952,8 @@ const addChoice = () => {
 }
 
 const removeChoice = () => {
-  if (choices.value.length > 2) {
+  // Typed-answer questions can be down to a single accepted answer
+  if (choices.value.length > (questionType.value === 'short_answer' ? 1 : 2)) {
     choices.value.pop()
     if (correctChoice.value >= choices.value.length) {
       correctChoice.value = choices.value.length - 1
@@ -946,6 +963,26 @@ const removeChoice = () => {
 
 const updateChoice = (idx, value) => {
   choices.value[idx] = value
+}
+
+// The question editor is a modal: opened by "+ New Question" (with the round most recently used
+// preselected) or by clicking a question in the list
+const showQuestionModal = ref(false)
+const lastUsedRounds = ref({}) // { [quizId]: index of the round a question was last saved to }
+const lastUsedRound = (quiz) => {
+  const idx = lastUsedRounds.value[quiz?.id]
+  return Number.isInteger(idx) ? idx : 0
+}
+
+const openNewQuestion = () => {
+  clearQuestionForm()
+  questionRoundIndex.value = Math.min(lastUsedRound(selectedQuiz.value), Math.max(0, currentRounds.value.length - 1))
+  showQuestionModal.value = true
+}
+
+const closeQuestionModal = () => {
+  showQuestionModal.value = false
+  clearQuestionForm()
 }
 
 const editQuestion = (idx) => {
@@ -958,8 +995,7 @@ const editQuestion = (idx) => {
   imageType.value = question.imageType || null
   questionRoundIndex.value = question.roundIndex ?? 0
   editingQuestionIdx.value = idx
-  // Scroll to editor
-  document.querySelector('.question-editor')?.scrollIntoView({ behavior: 'smooth' })
+  showQuestionModal.value = true
 }
 
 const clearQuestionForm = () => {
@@ -1015,7 +1051,13 @@ const saveQuestion = async () => {
     showAlert('Please enter a question', 'Missing Question')
     return
   }
-  if (choices.value.filter(c => c.trim()).length < 2) {
+  // A typed-answer question needs just one accepted answer; the others need at least two choices
+  if (questionType.value === 'short_answer') {
+    if (choices.value.filter(c => c.trim()).length < 1) {
+      showAlert('Please enter at least one accepted answer', 'Missing Answer')
+      return
+    }
+  } else if (choices.value.filter(c => c.trim()).length < 2) {
     showAlert('Please enter at least 2 choices', 'Missing Choices')
     return
   }
@@ -1026,6 +1068,7 @@ const saveQuestion = async () => {
   }
 
   const question = {
+    id: editingQuestionIdx.value !== null ? currentQuestions.value[editingQuestionIdx.value]?.id : undefined,
     text: questionText.value,
     choices: choices.value,
     correctChoice: parseInt(correctChoice.value),
@@ -1080,7 +1123,9 @@ const executeSaveQuestion = async (question) => {
     // Update quiz on server with all questions
     await persistQuiz()
 
-    // Reset form
+    // Remember the round for the next new question, and close the editor
+    if (currentRounds.value.length && selectedQuiz.value) lastUsedRounds.value[selectedQuiz.value.id] = question.roundIndex
+    showQuestionModal.value = false
     clearQuestionForm()
 
     // Refresh the quiz list to update question count and reload questions
@@ -2080,7 +2125,7 @@ const startResize = (column, e) => {
   // Only trigger resize if click is near the right edge (within 10px)
   if (Math.abs(clickX - rightEdge) > 10) return
 
-  resizingColumn.value = { column, startX: e.clientX, startCol1Width: col1Width.value, startCol2Width: col2Width.value }
+  resizingColumn.value = { column, startX: e.clientX, startCol1Width: col1Width.value }
   e.preventDefault()
 }
 
@@ -2088,28 +2133,20 @@ const handleMouseMove = (e) => {
   if (!resizingColumn.value) return
 
   const delta = e.clientX - resizingColumn.value.startX
-  const { column, startCol1Width, startCol2Width } = resizingColumn.value
+  const { startCol1Width } = resizingColumn.value
 
   // Minimum column widths
   const minWidth = 200
-  const minCol3Width = 250 // Minimum width for questions list
+  const minQuestionsWidth = 250 // Minimum width for the questions list
 
   // Get container width
   const container = document.querySelector('.quiz-management')
   if (!container) return
   const containerWidth = container.clientWidth
 
-  if (column === 1) {
-    const newWidth = Math.max(minWidth, startCol1Width + delta)
-    // Ensure col1 + col2 doesn't exceed container width minus min col3 width
-    const maxWidth = containerWidth - col2Width.value - minCol3Width
-    col1Width.value = Math.min(newWidth, maxWidth)
-  } else if (column === 2) {
-    const newWidth = Math.max(minWidth, startCol2Width + delta)
-    // Ensure col1 + col2 doesn't exceed container width minus min col3 width
-    const maxWidth = containerWidth - col1Width.value - minCol3Width
-    col2Width.value = Math.min(newWidth, maxWidth)
-  }
+  // The quiz list is the only resizable column now: the questions panel takes the rest
+  const newWidth = Math.max(minWidth, startCol1Width + delta)
+  col1Width.value = Math.min(newWidth, containerWidth - minQuestionsWidth)
 }
 
 const stopResize = () => {
@@ -2196,10 +2233,10 @@ onUnmounted(() => {
   }
 }
 
-/* Quiz Management Tab - 3-Column Layout */
+/* Quiz Management Tab - 2-Column Layout (quiz list | questions) */
 .quiz-management {
   display: grid;
-  grid-template-columns: v-bind(col1Width + 'px') v-bind(col2Width + 'px') minmax(250px, 1fr);
+  grid-template-columns: v-bind(col1Width + 'px') minmax(250px, 1fr);
   gap: 0;
   height: 100%;
   position: relative;
@@ -2224,23 +2261,43 @@ onUnmounted(() => {
   cursor: col-resize;
 }
 
-.question-editor-panel {
+.select-quiz-hint {
   display: flex;
   flex-direction: column;
-  padding: 0 1rem 0 1rem;
-  border-right: 1px solid var(--border-color);
-  min-height: 0;
-  position: relative;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+  color: var(--text-tertiary);
+  text-align: center;
 }
 
-.question-editor-panel::after {
-  content: '';
-  position: absolute;
-  right: -4px;
-  top: 0;
-  bottom: 0;
-  width: 8px;
-  cursor: col-resize;
+.edit-quiz-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.edit-quiz-form label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.edit-quiz-form input,
+.edit-quiz-form textarea {
+  padding: 0.7rem;
+  background: var(--bg-overlay-10);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.edit-quiz-buttons {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
 }
 
 .questions-sidebar {

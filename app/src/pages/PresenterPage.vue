@@ -50,6 +50,7 @@
         @endRound="endRound"
         @completeQuiz="completeQuiz"
         @finishReview="finishRoundReview"
+        @reopenRound="reopenRound"
         @overrideAnswer="overrideAnswer"
         @startCountdown="startRoundCountdown"
         @cancelCountdown="cancelRoundCountdown"
@@ -587,6 +588,16 @@ const endRound = async () => {
 const finishRoundReview = () => {
   if (!currentRoomCode.value) return
   socket.emit('finishRoundReview', { roomCode: currentRoomCode.value, roundIndex: roundReview.value?.roundIndex })
+}
+
+// Go back to the round that just closed so players can add or change answers
+const reopenRound = async () => {
+  if (!currentRoomCode.value) return
+  const confirmed = await showConfirm(
+    'Re-open this round? Players will see their questions again with the answers they gave, and can add or change answers. The round has no time limit (you can start a countdown), and ending it comes back to this review.',
+    'Re-open Round'
+  )
+  if (confirmed) socket.emit('reopenRound', { roomCode: currentRoomCode.value, roundIndex: roundReview.value?.roundIndex })
 }
 
 // Settle a dispute: count a player's answer to a finished question as correct (or wrong)

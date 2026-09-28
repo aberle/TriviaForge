@@ -1,14 +1,15 @@
 <template>
   <aside class="questions-sidebar">
     <div class="questions-list-header">
-      <h2>Questions</h2>
+      <h2>Questions<span v-if="selectedQuiz" class="questions-list-quiz"> &mdash; {{ selectedQuiz.title }}</span></h2>
       <div v-if="selectedQuiz" class="shuffle-controls">
+        <button @click="$emit('newQuestion')" class="btn-new-question" title="Add a question to this quiz">+ New Question</button>
         <button v-if="!hasRounds" @click="$emit('enableRounds')" class="btn-shuffle" title="Split this quiz into rounds"><AppIcon name="layers" size="md" /></button>
         <button @click="$emit('shuffleQuestions')" class="btn-shuffle" :title="hasRounds ? 'Shuffle Questions Within Each Round' : 'Shuffle Questions'"><AppIcon name="shuffle" size="md" /></button>
         <button @click="$emit('shuffleAllChoices')" class="btn-shuffle" title="Shuffle All Choices"><AppIcon name="dices" size="md" /></button>
       </div>
     </div>
-    <div class="questions-list">
+    <div ref="listEl" class="questions-list" @dragover="trackAutoScroll" @dragleave="maybeStopAutoScroll" @drop="stopAutoScroll" @dragend="stopAutoScroll">
       <div v-if="questions.length === 0 && !hasRounds" class="empty-state"><em>No questions</em></div>
       <section
         v-for="group in groups"
@@ -88,7 +89,7 @@
               class="round-select"
               :value="group.roundIdx"
               :aria-label="`Round for question ${item.idx + 1}`"
-              title="Move to round"
+              :title="`Move to round (currently ${group.round.title || `Round ${group.roundIdx + 1}`})`"
               @click.stop
               @change="$emit('moveQuestionToRound', { idx: item.idx, roundIdx: Number($event.target.value) })"
             >
@@ -118,7 +119,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, onUnmounted } from 'vue';
 import AppIcon from '@/components/common/AppIcon.vue';
 
 const props = defineProps({
@@ -133,6 +134,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits([
+  'newQuestion',
   'shuffleQuestions',
   'shuffleAllChoices',
   'enableRounds',
@@ -153,6 +155,51 @@ const emit = defineEmits([
 ]);
 
 const hasRounds = computed(() => props.rounds.length > 0);
+
+// Auto-scroll the questions list while dragging a question near its top or bottom edge: without
+// this, a question can never be dragged into a round that's off-screen, since the drag can't scroll
+// the page itself (it's the panel that scrolls).
+const listEl = ref(null);
+const EDGE = 56; // px from the edge that triggers scrolling
+const MAX_SPEED = 18; // px per frame at the very edge
+let autoScrollY = null;
+let autoScrollRaf = null;
+
+const runAutoScroll = () => {
+  const el = listEl.value;
+  if (!el || autoScrollY === null) {
+    autoScrollRaf = null;
+    return;
+  }
+  const rect = el.getBoundingClientRect();
+  let speed = 0;
+  if (autoScrollY < rect.top + EDGE) speed = -MAX_SPEED * (1 - (autoScrollY - rect.top) / EDGE);
+  else if (autoScrollY > rect.bottom - EDGE) speed = MAX_SPEED * (1 - (rect.bottom - autoScrollY) / EDGE);
+  if (speed) el.scrollTop += speed;
+  autoScrollRaf = requestAnimationFrame(runAutoScroll);
+};
+
+const trackAutoScroll = (event) => {
+  if (props.draggedQuestionIdx === null) return;
+  autoScrollY = event.clientY;
+  if (!autoScrollRaf) autoScrollRaf = requestAnimationFrame(runAutoScroll);
+};
+
+const stopAutoScroll = () => {
+  autoScrollY = null;
+  if (autoScrollRaf) {
+    cancelAnimationFrame(autoScrollRaf);
+    autoScrollRaf = null;
+  }
+};
+
+// Leaving the list entirely (e.g. dragging out over the sidebar) stops it; re-entering restarts it
+const maybeStopAutoScroll = (event) => {
+  if (!listEl.value?.contains(event.relatedTarget)) stopAutoScroll();
+};
+
+onUnmounted(stopAutoScroll);
+
 
 // Questions grouped by round, keeping each question's position in the flat list (its Q number).
 // Without rounds there is a single group. First/last flags are per round so the reorder
@@ -229,12 +276,34 @@ const isDragTargetRound = (roundIdx) => {
 </script>
 
 <style scoped>
+.btn-new-question {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--info-light);
+  border-radius: 8px;
+  background: var(--info-bg-20);
+  color: var(--info-light);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-new-question:hover {
+  background: var(--info-bg-30, var(--info-bg-20));
+  color: var(--text-primary);
+}
+
 .questions-sidebar {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
   height: 100%;
+}
+
+.questions-list-quiz {
+  color: var(--text-secondary);
+  font-weight: normal;
+  font-size: 0.9rem;
 }
 
 .questions-list-header {
@@ -504,9 +573,9 @@ h2 {
 }
 
 .round-select {
-  flex: 1;
-  min-width: 0;
-  max-width: 9rem;
+  flex: 1 1 auto;
+  min-width: 5rem;
+  max-width: 14rem;
   padding: 0.35rem 0.5rem;
   background: var(--bg-overlay-20);
   border: 1px solid var(--border-color);
@@ -514,6 +583,9 @@ h2 {
   color: var(--text-primary);
   font-size: 0.8rem;
   margin: 0 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn-add-round {

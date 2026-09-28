@@ -55,6 +55,8 @@
           :players="quizResultsData.players"
           :totalQuestions="quizResultsData.totalQuestions"
           :highlightName="currentDisplayName || ''"
+          :showStatsButton="true"
+          @showStats="showProgressModal"
         />
 
         <!-- Quiz Complete Screen (v5.6.0) - shown for ALL quizzes on completion -->
@@ -65,7 +67,7 @@
             Results in <span class="countdown-number">{{ resultsCountdown }}</span>...
           </p>
           <p v-else class="complete-subtitle">
-            Check your <strong>Progress</strong> to see how you did!
+            Check your <strong>Answer Statistics</strong> to see how you did!
           </p>
         </div>
 
@@ -164,10 +166,10 @@
         />
 
         <!-- Players List -->
-        <PlayersList :nonSpectatorPlayers="nonSpectatorPlayers" />
+        <PlayersList v-if="inRoom" :nonSpectatorPlayers="nonSpectatorPlayers" />
 
-        <!-- Status Message -->
-        <StatusMessage :message="statusMessage" :messageType="statusMessageType" />
+        <!-- Status Message: only while in a room (before joining, it never says anything but "Ready to join") -->
+        <StatusMessage v-if="inRoom" :message="statusMessage" :messageType="statusMessageType" />
       </div>
     </div>
 
@@ -190,7 +192,7 @@
       @cancel="passwordSetupCancelled"
     />
 
-    <!-- Progress Modal -->
+    <!-- Answer Statistics Modal (was "Progress") -->
     <ProgressModal
       :isOpen="showProgressModalFlag"
       :questionHistory="progressItems"
@@ -1203,6 +1205,13 @@ watch(() => roundCurrent.value?.countdown === true, (running, wasRunning) => {
   }
 })
 
+// The presenter re-opened a round they were reviewing: tell players they can change their answers
+watch(roundPhase, (phase, before) => {
+  if (phase === 'open' && before === 'review') {
+    uiStore.addNotification('The presenter re-opened the round: you can add or change answers, then submit again.', 'info', 6000)
+  }
+})
+
 watch(roundPhase, (phase) => {
   if (phase === 'open' && roundCurrent.value) {
     statusMessage.value = `Round ${roundCurrent.value.roundIndex + 1} in progress`
@@ -2021,6 +2030,8 @@ const verifyAuthToken = async () => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  /* See #app-container in App.vue: 100dvh (where supported) avoids the mobile address-bar gap */
+  min-height: 100dvh;
   background: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -2196,8 +2207,13 @@ const verifyAuthToken = async () => {
   .sidebar {
     width: 100%;
     min-width: unset;
-    flex: 1;
-    overflow-y: auto;
+    /* Size to its own content (the join form on the landing page): stretching it to fill the
+       leftover height of the page left a lot of empty space under the Join Room button. The base
+       rule's overflow-y: auto is for the desktop side panel (players list, etc.); on mobile the
+       sidebar is sized to its content, but leave overflow-y: auto in place and a stray 1px of
+       sub-pixel rounding is still enough to draw a scrollbar with nothing below it to reach. */
+    flex: 0 1 auto;
+    overflow-y: visible;
   }
 
   .sidebar.hidden-mobile-in-room {

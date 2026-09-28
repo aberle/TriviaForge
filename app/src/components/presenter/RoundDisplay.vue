@@ -88,9 +88,14 @@
             <span class="rd-badge review">REVIEW</span>
             <h3>Round {{ review.roundIndex + 1 }}: {{ review.title }}<span v-if="review.reason === 'timeout'"> (time's up)</span></h3>
           </div>
-          <Button variant="primary" @click="$emit('finishReview')">
-            <AppIcon name="check-circle" size="sm" /> Finish Review &amp; Send Results
-          </Button>
+          <div class="rd-review-actions">
+            <Button variant="secondary" @click="$emit('reopenRound')">
+              <AppIcon name="rotate-ccw" size="sm" /> Re-open Round
+            </Button>
+            <Button variant="primary" @click="$emit('finishReview')">
+              <AppIcon name="check-circle" size="sm" /> Finish Review &amp; Send Results
+            </Button>
+          </div>
         </div>
         <p class="rd-hint">
           <AppIcon name="eye-off" size="sm" />
@@ -210,7 +215,7 @@ const props = defineProps({
   quizCompleted: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['startRound', 'endRound', 'completeQuiz', 'startCountdown', 'cancelCountdown', 'finishReview', 'overrideAnswer']);
+const emit = defineEmits(['startRound', 'endRound', 'completeQuiz', 'startCountdown', 'cancelCountdown', 'finishReview', 'reopenRound', 'overrideAnswer']);
 
 // Countdowns the presenter can start on an untimed round (seconds), or type their own
 const COUNTDOWN_PRESETS = [30, 60, 120, 300];
@@ -343,6 +348,12 @@ const formatTime = (seconds) => {
   border: 2px solid var(--warning-light);
   border-radius: 14px;
   background: var(--warning-bg-10);
+}
+
+.rd-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .rd-review-item {

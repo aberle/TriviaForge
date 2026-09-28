@@ -3,7 +3,7 @@
     :isOpen="isOpen"
     @close="$emit('close')"
     size="large"
-    title="Your Progress"
+    title="Answer Statistics"
   >
     <template #default>
       <div class="progress-content no-select">
@@ -77,7 +77,7 @@
         <div v-else class="progress-empty">
           <AppIcon name="clipboard-list" size="2xl" class="empty-icon" />
           <p>No questions answered yet!</p>
-          <p class="empty-hint">Your progress will appear here once the presenter starts the quiz.</p>
+          <p class="empty-hint">Your answer statistics will appear here once the presenter starts the quiz.</p>
         </div>
       </div>
     </template>

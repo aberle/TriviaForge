@@ -7,10 +7,10 @@
       <span class="brand-title" :title="brandTitle">{{ brandTitle }}</span>
     </div>
 
-    <!-- Center: progress button -->
+    <!-- Center: answer statistics button -->
     <div class="nav-progress-container">
-      <button v-if="inRoom" id="progressBtn" class="progress-btn" @click="$emit('showProgress')">
-        <AppIcon name="bar-chart-3" size="sm" /> <span class="progress-btn-label">Progress</span>
+      <button v-if="inRoom" id="progressBtn" class="progress-btn" title="Answer Statistics" aria-label="Answer Statistics" @click="$emit('showProgress')">
+        <AppIcon name="bar-chart-3" size="sm" /> <span class="progress-btn-label">Answer Statistics</span>
       </button>
     </div>
 
@@ -83,7 +83,7 @@
         </a>
 
         <!-- Players list (mobile only) -->
-        <div class="mobile-players-section">
+        <div v-if="inRoom" class="mobile-players-section">
           <div class="mobile-players-label">Players in Room</div>
           <div class="menu-players">
             <div v-for="(player, idx) in nonSpectatorPlayers" :key="player.id" class="player-item">

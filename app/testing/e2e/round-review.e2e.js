@@ -94,18 +94,45 @@ await runSuite(
     await presenter.waitFor(`[...document.querySelectorAll('.rd-review-entry')].some((e) => /Ann/.test(e.innerText) && e.classList.contains('accepted'))`, { timeout: 6000 });
 
     ok("still nothing has reached the player", (await ann.has('checking the answers')) && bob.all('roundEnded').length === 0);
+
+    section('Re-opening the round');
+    // Bob's "Saturn" is counted correct too; he will not change it
+    await presenter.eval(`[...document.querySelectorAll('.rd-review-entry')].find((e) => /Bob/.test(e.innerText)).querySelector('button').click(); true`);
+    await presenter.waitFor(`[...document.querySelectorAll('.rd-review-entry')].some((e) => /Bob/.test(e.innerText) && e.classList.contains('accepted'))`, { timeout: 6000 });
+    await presenter.clickText('Re-open Round');
+    await presenter.waitText('Re-open this round?');
+    await presenter.clickText('Confirm', '.dialog-buttons button');
+    await ann.waitText('Round 1 of 2');
+    await ann.waitFor(`document.querySelectorAll('.short-answer-input').length === 2 && document.querySelectorAll('.short-answer-input')[0].value !== ''`, { timeout: 8000 });
+    ok('players get their questions back with the answers they gave, already submitted', (await ann.eval(`[...document.querySelectorAll('.short-answer-input')].map((i) => i.value).join()`)) === 'Mokum,Jupiter' && (await ann.has('Answers submitted!')));
+    ok('and are told the presenter re-opened it', await ann.has('re-opened the round'));
+    ok('the presenter is back on the live round: everyone who had answers counts as submitted (3 of the 4 in the room), it can be ended, and a countdown offered (no time limit now)', (await presenter.has('End Round')) && (await presenter.has('3 of 4 players have submitted')) && (await presenter.has('Auto-end in')));
+    ok('other players get it too, with their own submitted answers', bob.all('roundState').at(-1).phase === 'open' && Array.isArray(bob.all('roundState').at(-1).current.you.submittedAnswers));
+    // Ann changes her answer to one the grader accepts, and resubmits
+    await ann.eval(`(() => { const input = document.querySelectorAll('.short-answer-input')[0]; input.value = 'Amsterdam'; input.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    await ann.waitText('Submit Updated Answers');
+    await ann.clickText('Submit Updated Answers');
+    await ann.waitText('Updated answers submitted');
+    await endRound();
+    await presenter.waitText('Finish Review');
+    const second = await entries();
+    ok("in the second review Ann's changed answer is accepted by the grader (not listed), the others are still there", !second.some((e) => e.name === 'Ann') && second.some((e) => e.name === 'Cy' && !e.accepted), JSON.stringify(second));
+    ok("Bob's unchanged answer is still counted correct: the grade the presenter settled is kept", second.some((e) => e.name === 'Bob' && e.accepted), JSON.stringify(second));
+
     await presenter.clickText('Finish Review');
     await ann.waitText('this round');
-    ok("Ann's result counts the answer the presenter accepted: 2 of 2", await ann.has('2 / 2'));
-    ok('and the leaderboard has her level with the others in first place (Ann 2, Bob 1, Cy 0)', await ann.eval(`document.querySelector('.leaderboard-row.is-you')?.innerText.includes('1')`));
+    ok("Ann's result is 2 of 2 (her changed answer, and Jupiter)", await ann.has('2 / 2'));
+    ok('and the leaderboard has her level with Bob in first place (Ann 2, Bob 2, Cy 0)', await ann.eval(`document.querySelector('.leaderboard-row.is-you')?.innerText.includes('1')`));
 
-    section('Live Standings remembers it');
+    section('Live Standings remembers the grade that was kept');
     await presenter.clickText('Standings', '.btn-standings');
     await presenter.waitText('Question Breakdown');
     await sleep(500);
-    await presenter.eval(`document.querySelectorAll('.modal-overlay .player-answers-header')[0].click(); true`);
+    await presenter.eval(`document.querySelectorAll('.modal-overlay .player-answers-header').forEach((h) => h.click()); true`);
     await sleep(300);
-    ok('the accepted answer is tagged as edited there', await presenter.eval(`[...document.querySelectorAll('.modal-overlay .question-detail:nth-of-type(1) .player-response')].find((r) => /Ann/.test(r.innerText)).innerText.includes('edited')`));
+    const edited = (q, who) => presenter.eval(`[...document.querySelectorAll('.modal-overlay .question-detail:nth-of-type(${q}) .player-response')].find((r) => /${who}/.test(r.innerText)).innerText.includes('edited')`);
+    ok("Bob's counted-correct answer is tagged as edited", await edited(2, 'Bob'));
+    ok("Ann's is not: she changed that answer, so the old grade no longer applied", !(await edited(1, 'Ann')));
     await presenter.eval(`document.querySelector('.modal-close-btn').click(); true`);
 
     section('Round two: nothing to check, the review still appears');

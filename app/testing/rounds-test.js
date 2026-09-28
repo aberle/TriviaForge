@@ -250,9 +250,18 @@ async function main() {
     check('players are only told the round is being checked', playerReview.items === undefined && !/correctChoice|acceptedAnswers|standings/.test(JSON.stringify(playerReview)));
     await sleep(500);
     check('no results reach players or the display while the review is open', [p1, p3, display].every((c) => c.all('roundEnded').length === 0));
+    // Re-opening the timed round from its review: no time limit any more, answers kept as submitted
+    const reopenMark = { p1: p1.mark(), presenter: presenter.mark() };
+    presenter.socket.emit('reopenRound', { roomCode, roundIndex: 0 });
+    const reopened = await p1.waitFor('roundState', { since: reopenMark.p1, pred: (st) => st.phase === 'open' });
+    check('a re-opened timed round has no time limit and keeps the answers as submitted', reopened.current.timeLimitSeconds === null && reopened.current.endsAt === null && reopened.current.you.submitted === true && reopened.current.you.submittedAnswers.join() === '0,0,Jupiter', JSON.stringify(reopened.current.you));
+    check('players joining the review are told nothing yet; the round is simply open again', p3.all('roundEnded').length === 0);
+    presenter.socket.emit('endRound', { roomCode, roundIndex: 0 });
+    const review1b = await presenter.waitFor('roundReview', { since: reopenMark.presenter });
+    check('ending a re-opened round goes back to the review', review1b.roundIndex === 0 && review1b.reason === 'presenter');
     presenter.socket.emit('finishRoundReview', { roomCode, roundIndex: 0 });
     const ended = await p1.waitFor('roundEnded', { timeout: 8000 });
-    check('round ended by timeout', ended.reason === 'timeout' && ended.roundIndex === 0 && ended.isLastRound === false);
+    check('round ended (its first close was by timeout)', ended.reason === 'presenter' && ended.roundIndex === 0 && ended.isLastRound === false);
     check('correct answers are revealed after the round', ended.questions[0].correctChoice === 0 && ended.questions[2].acceptedAnswers?.[0]?.answer_text === 'Jupiter');
     check('standings rank players', ended.standings.map((s) => `${s.rank}:${s.name}:${s.totalScore}`).join() === `1:${p1.name}:3,2:${p2.name}:2,3:${p3.name}:0`, JSON.stringify(ended.standings));
     check('edits made after submitting do not count until resubmitted (personal result uses the submission)', ended.you.roundScore === 3 && ended.you.rank === 1 && ended.you.results.every((r) => r === true));

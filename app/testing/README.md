@@ -71,7 +71,7 @@ TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 
 | Suite | Covers |
 |---|---|
-| `player-round-flow` | Player's round screen: selection highlight, progress modal, no-confirm submit, resubmitting, unsent-change warning, refresh mid-round, timed auto-submit |
+| `player-round-flow` | Player's round screen: selection highlight, Answer Statistics modal, no-confirm submit, resubmitting, unsent-change warning, refresh mid-round, timed auto-submit |
 | `round-unanswered` | Submitting with blank questions: first tap warns and marks them, second sends anyway; complete rounds and the timer never ask |
 | `results-and-standings` | Leaderboards between rounds, final standings withheld until completion (screen and wire), podium ties, full leaderboard, results surviving a refresh, late joiners |
 | `join-and-identity` | Unique display names, races, keeping the original name, QR link behaviour, guest-only vs normal join form |
@@ -88,6 +88,8 @@ TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 | `excel-import` | Importing a quiz from Excel with rounds (the sample file, grouping, time limits, bad files), a file without rounds, and the template (API only) |
 | `round-review` | The presenter's review after a round: typed answers marked wrong are listed, can be counted correct and undone, nothing reaches players until it is finished, and it always appears |
 | `hidden-standings` | Hidden standings mode: no results, answers or standings for players or the display until the quiz is completed, then the final results and Progress; survives a resume |
+| `admin-quiz-management` | Quiz Management layout: Questions panel only once a quiz is selected, title/description edited from the quiz menu, New Question modal with the last-used round preselected, one accepted answer for typed-answer questions |
+| `admin-drag-autoscroll` | Dragging a question near the top or bottom edge of the Questions panel auto-scrolls it (so a round further down the list can be reached); a long round name in the "Move to round" dropdown clips with a tooltip instead of overflowing |
 | `use-rounds-composable` | The client `useRounds` composable against real sockets (no browser) |
 
 Shared plumbing is in `e2e/lib/`: `harness.js` (suite runner, quiz/room/bot/page helpers, cleanup),

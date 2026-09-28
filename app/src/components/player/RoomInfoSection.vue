@@ -4,7 +4,7 @@
     <div><strong>Room Code:</strong> <span>{{ currentRoomCode }}</span></div>
     <div><strong>Your Name:</strong> <span>{{ currentDisplayName }}</span></div>
 
-    <button class="btn-info" @click="$emit('showProgress')">📊 View Progress</button>
+    <button class="btn-info" @click="$emit('showProgress')">📊 Answer Statistics</button>
     <button class="btn-danger" @click="$emit('leaveRoom')">Leave Room</button>
   </div>
 </template>

@@ -115,6 +115,38 @@ await runSuite(
     await leave(p);
     await p.closeTab(); // the same device must not stay connected in another tab
 
+    section('The landing page');
+    // Not covered here: a phone's address bar showing/hiding makes 100vh briefly taller than what's
+    // actually visible, which can draw a pointless scrollbar at the very bottom of the page (fixed in
+    // App.vue and PlayerPage.vue with a 100dvh override). Headless Chrome has no address bar to show
+    // or hide, so there is no way to reproduce or check for that specific bug here; it was confirmed
+    // fixed by hand on a real phone instead.
+    // A tall phone screen: if the join form's box were stretched to fill it, that would show up as a
+    // big gap between it and the viewport height (and sometimes a scrollbar with nothing below to see)
+    const landing = await env.open(`${BASE}/player`, { width: 390, height: 1400, mobile: true });
+    await landing.waitFor(`!!document.querySelector('#roomCodeManual')`);
+    await sleep(500);
+    ok('has no "Players in Room" section (nobody is in a room yet)', !(await landing.has('Players in Room')));
+    ok('has no "Ready to join" status badge either (never shows anything else, and you have to scroll to see it)', !(await landing.has('Ready to join')));
+    // A flex-grown container with nothing that overflows just reports its own (stretched) size as its
+    // scrollHeight too, so measure the actual content by the bottom of the join form itself, not the
+    // sidebar box's own scrollHeight
+    const sidebar = await landing.eval(`(() => {
+      const el = document.querySelector('.sidebar');
+      const box = el.getBoundingClientRect();
+      const content = document.querySelector('.join-section').getBoundingClientRect();
+      return {
+        boxHeight: box.height,
+        contentHeight: content.bottom - box.top,
+        // overflow-y: auto/scroll draws a scrollbar the instant scrollHeight is even 1px past
+        // clientHeight (rounding, not real content), so the box must not be able to scroll at all
+        canScroll: getComputedStyle(el).overflowY === 'auto' || getComputedStyle(el).overflowY === 'scroll',
+      };
+    })()`);
+    ok("the join form's box isn't stretched to fill the tall screen, leaving a lot of empty space under it", sidebar.boxHeight < sidebar.contentHeight + 40, JSON.stringify(sidebar));
+    ok('and it never gets its own (pointless) scrollbar (not even from sub-pixel rounding)', !sidebar.canScroll, JSON.stringify(sidebar));
+    await landing.closeTab();
+
     section('QR links (?room=)');
     const qrJoined = await env.open(`${BASE}/player?room=${roomB}`, { width: 390, height: 844, mobile: true });
     let reached = true;

@@ -77,7 +77,7 @@ await runSuite(
     section("Nowhere else it could leak");
     await ann.eval(`document.querySelector('#progressBtn').click(); true`);
     await sleep(500);
-    ok("the player's Progress button says results are hidden for now", (await ann.has('Results are hidden for now')) && !(await ann.has('Incorrect')));
+    ok("the player's Answer Statistics button says results are hidden for now", (await ann.has('Results are hidden for now')) && !(await ann.has('Incorrect')));
     await ann.eval(`document.querySelector('.modal-close-btn').click(); true`);
     const again = env.bot(bob.playerID);
     bob.close();
@@ -106,10 +106,12 @@ await runSuite(
     await presenter.clickText('Confirm', '.dialog-buttons button');
     await ann.waitText('Full Leaderboard', { timeout: 30000 });
     ok('completing the quiz reveals the final results: podium and full leaderboard', (await ann.has('Full Leaderboard')) && (await ann.count('.remaining-row')) === 2);
-    await ann.eval(`document.querySelector('#progressBtn').click(); true`);
+    ok('the top button and the results page both say Answer Statistics', (await ann.eval(`document.querySelector('#progressBtn').textContent`)).includes('Answer Statistics') && (await ann.eval(`!!document.querySelector('.stats-button')`)));
+    await ann.eval(`document.querySelector('.stats-button').click(); true`); // the button under the podium opens the same modal
     await sleep(600);
+    ok('the modal is titled Answer Statistics', (await ann.eval(`document.querySelector('.modal-overlay').innerText`)).includes('Answer Statistics'));
     const progress = await ann.eval(`document.querySelector('.modal-overlay').innerText`);
-    ok('and the Progress button now shows her answers and which were right: 2 of 3', /Q1\./.test(progress) && /Incorrect/.test(progress) && (progress.match(/Correct/g) || []).length >= 2, progress.slice(0, 400));
+    ok('and the Answer Statistics button now shows her answers and which were right: 2 of 3', /Q1\./.test(progress) && /Incorrect/.test(progress) && (progress.match(/Correct/g) || []).length >= 2, progress.slice(0, 400));
 
     section('The mode survives a restart');
     await ann.eval(`document.querySelector('.modal-close-btn').click(); true`);

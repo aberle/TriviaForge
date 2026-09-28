@@ -2856,6 +2856,22 @@ io.on('connection', (socket) => {
     roundService.finishReview(roomCode);
   });
 
+  // Presenter re-opens the round they are reviewing, so players can add or change answers
+  socket.on('reopenRound', ({ roomCode, roundIndex }) => {
+    const room = roomService.liveRooms[roomCode];
+    if (!room || !roundService.isRoundMode(room)) return;
+
+    if (room.presenterId !== socket.id) {
+      socket.emit('roomError', 'Only the presenter can control rounds');
+      return;
+    }
+
+    // Ignore a stale request for a round that is not the one in review
+    if (roundIndex !== undefined && roundIndex !== room.rounds.reviewIndex) return;
+
+    roundService.reopenRound(roomCode);
+  });
+
   // Presenter sets a countdown on an untimed round: it ends by itself when the time is up
   socket.on('startRoundCountdown', ({ roomCode, roundIndex, seconds }) => {
     const room = roomService.liveRooms[roomCode];

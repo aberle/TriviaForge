@@ -19,45 +19,9 @@
       <div v-if="importStatus" class="import-status">{{ importStatus }}</div>
     </div>
 
-    <div class="quiz-form">
-      <div class="input-with-action">
-        <input
-          :value="quizTitle"
-          @input="$emit('update:quizTitle', $event.target.value)"
-          type="text"
-          placeholder="Quiz Title"
-          :class="{ 'has-changes': hasQuizSelected && titleChanged }"
-        />
-        <div v-if="hasQuizSelected && titleChanged" class="inline-actions">
-          <button class="btn-inline btn-confirm" @click="$emit('saveQuizTitle')" title="Save title">
-            <AppIcon name="check" size="sm" />
-          </button>
-          <button class="btn-inline btn-cancel" @click="$emit('cancelQuizTitle')" title="Cancel">
-            <AppIcon name="x" size="sm" />
-          </button>
-        </div>
-      </div>
-      <div class="input-with-action">
-        <textarea
-          :value="quizDescription"
-          @input="$emit('update:quizDescription', $event.target.value)"
-          placeholder="Quiz Description"
-          :class="{ 'has-changes': hasQuizSelected && descriptionChanged }"
-        ></textarea>
-        <div v-if="hasQuizSelected && descriptionChanged" class="inline-actions inline-actions-textarea">
-          <button class="btn-inline btn-confirm" @click="$emit('saveQuizDescription')" title="Save description">
-            <AppIcon name="check" size="sm" />
-          </button>
-          <button class="btn-inline btn-cancel" @click="$emit('cancelQuizDescription')" title="Cancel">
-            <AppIcon name="x" size="sm" />
-          </button>
-        </div>
-      </div>
-    </div>
-
     <div class="quiz-list">
       <div v-if="quizzes.length === 0" class="empty-state"><em>No quizzes</em></div>
-      <div v-for="quiz in quizzes" :key="quiz.filename" class="quiz-item" @click="$emit('selectQuiz', quiz)">
+      <div v-for="quiz in quizzes" :key="quiz.filename" class="quiz-item" :class="{ 'quiz-item--active': selectedQuiz && selectedQuiz.id === quiz.id }" @click="$emit('selectQuiz', quiz)">
         <div class="quiz-info">
           <div class="quiz-name">{{ quiz.title }}</div>
           <div class="quiz-meta">
@@ -88,6 +52,10 @@
               <span>Show Results</span>
             </button>
             <hr class="menu-divider" />
+            <button class="menu-item" @click="editDetails(quiz)">
+              <AppIcon name="pencil" size="sm" />
+              <span>Edit Title &amp; Description</span>
+            </button>
             <button class="menu-item menu-item-danger" @click="handleDelete(quiz.filename)">
               <AppIcon name="trash-2" size="sm" />
               <span>Delete Quiz</span>
@@ -100,25 +68,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import AppIcon from '@/components/common/AppIcon.vue';
 import { useServerConfig } from '@/composables/useServerConfig.js';
 
 const { soloEnabled } = useServerConfig();
 
 const props = defineProps({
-  quizTitle: { type: String, required: true },
-  quizDescription: { type: String, required: true },
-  originalQuizTitle: { type: String, default: '' },
-  originalQuizDescription: { type: String, default: '' },
-  hasQuizSelected: { type: Boolean, default: false },
   quizzes: { type: Array, required: true },
+  selectedQuiz: { type: Object, default: null },
   importStatus: { type: String, default: '' }
 });
 
 const emit = defineEmits([
-  'update:quizTitle',
-  'update:quizDescription',
   'createQuiz',
   'downloadTemplate',
   'excelUpload',
@@ -126,15 +88,8 @@ const emit = defineEmits([
   'deleteQuiz',
   'toggleAvailability',
   'startResize',
-  'saveQuizTitle',
-  'saveQuizDescription',
-  'cancelQuizTitle',
-  'cancelQuizDescription'
+  'editQuizDetails'
 ]);
-
-// Detect if title or description has changed from original
-const titleChanged = computed(() => props.quizTitle !== props.originalQuizTitle);
-const descriptionChanged = computed(() => props.quizDescription !== props.originalQuizDescription);
 
 const excelFileInput = ref(null);
 const openMenuId = ref(null);
@@ -153,6 +108,11 @@ const closeMenu = () => {
 
 const toggleAvailability = (quiz, type) => {
   emit('toggleAvailability', { quiz, type });
+  closeMenu();
+};
+
+const editDetails = (quiz) => {
+  emit('editQuizDetails', quiz);
   closeMenu();
 };
 
@@ -375,6 +335,16 @@ h2 {
 .quiz-item:hover {
   background: var(--bg-overlay-30);
   border-color: var(--info-light);
+}
+
+.quiz-item--active {
+  background: var(--info-bg-20);
+  border-color: var(--info-light);
+  box-shadow: inset 3px 0 0 var(--info-light);
+}
+
+.quiz-item--active:hover {
+  background: var(--info-bg-30, var(--info-bg-20));
 }
 
 .quiz-info {
