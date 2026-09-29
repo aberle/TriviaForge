@@ -47,6 +47,9 @@ export const env = {
   hostIp: process.env[ENV_VARS.HOST_IP] || null,
   timezone: process.env[ENV_VARS.TZ] || 'America/New_York',
 
+  // Shown in place of "TriviaForge" in the navbars, the login/waiting screens and the browser tab title
+  appName: process.env[ENV_VARS.APP_NAME]?.trim() || 'TriviaForge',
+
   // Database
   databaseUrl: process.env[ENV_VARS.DATABASE_URL] || 'postgres://trivia:trivia@db:5432/trivia',
 

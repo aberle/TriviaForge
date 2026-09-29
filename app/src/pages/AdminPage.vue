@@ -20,7 +20,19 @@
     <main class="container">
       <!-- Quiz Management Tab -->
       <div v-if="activeTab === 'quiz'" class="tab-content quiz-management">
+        <button
+          type="button"
+          class="btn-mobile-quiz-toggle"
+          :aria-expanded="showQuizSidebarMobile"
+          @click="showQuizSidebarMobile = !showQuizSidebarMobile"
+        >
+          <AppIcon name="list" size="sm" />
+          <span>{{ selectedQuiz ? selectedQuiz.title : 'Select a quiz' }}</span>
+          <AppIcon :name="showQuizSidebarMobile ? 'chevron-up' : 'chevron-down'" size="sm" />
+        </button>
+        <div v-if="showQuizSidebarMobile" class="mobile-sidebar-backdrop" @click="showQuizSidebarMobile = false"></div>
         <QuizSidebar
+          :class="{ 'mobile-open': showQuizSidebarMobile }"
           :quizzes="quizzes"
           :selectedQuiz="selectedQuiz"
           :importStatus="importStatus"
@@ -42,6 +54,8 @@
           :editingQuestionIdx="editingQuestionIdx"
           :draggedQuestionIdx="draggedQuestionIdx"
           :dragOverTarget="dragOverTarget"
+          :showQuestionModal="showQuestionModal"
+          :questionRoundIndex="questionRoundIndex"
           @newQuestion="openNewQuestion"
           @shuffleQuestions="shuffleQuestions"
           @shuffleAllChoices="shuffleAllChoices"
@@ -551,6 +565,9 @@ const newBackupCodes = ref([])
 // Column resizing
 const col1Width = ref(280)
 const resizingColumn = ref(null)
+// On mobile the quiz sidebar becomes a collapsible drawer instead of a fixed column. Starts open so
+// there's something to pick from; selecting a quiz closes it so the questions panel gets the screen.
+const showQuizSidebarMobile = ref(true)
 
 // Dialog state
 const dialogTitle = ref('')
@@ -674,6 +691,7 @@ const selectQuiz = async (quiz) => {
   selectedQuiz.value = quiz
   quizTitle.value = quiz.title
   quizDescription.value = quiz.description || ''
+  showQuizSidebarMobile.value = false // on mobile, picking a quiz hands the screen to its questions
 
   try {
     const response = await get(`/api/quizzes/${quiz.filename}`)
@@ -1008,14 +1026,22 @@ const clearQuestionForm = () => {
   editingQuestionIdx.value = null
 }
 
-// Handle question type change - auto-set choices for True/False
-const setChoicesForType = (type) => {
+// Handle question type change - auto-set choices for True/False and short answer. `fromType` is
+// whatever the type was a moment ago, so leftover choices from one type never bleed into another
+// (e.g. True/False's two fixed choices, or short answer's single blank one).
+const setChoicesForType = (type, fromType) => {
+  if (type === fromType) return
   if (type === 'true_false') {
     choices.value = ['True', 'False']
     correctChoice.value = 0
-  } else if (type === 'multiple_choice' && choices.value.length === 2 &&
-             choices.value[0] === 'True' && choices.value[1] === 'False') {
-    // Switching from True/False to multiple choice - reset to 4 empty choices
+  } else if (type === 'short_answer') {
+    // Only one accepted answer is required; starting with the leftover True/False or multiple-choice
+    // choices (filled in or not) doesn't make sense here, so always reset to a single blank one
+    choices.value = ['']
+    correctChoice.value = -1
+  } else if (fromType === 'true_false' || fromType === 'short_answer') {
+    // Switching to multiple choice from either of the other types: neither leaves behind a usable
+    // set of choices, so reset to 4 empty ones
     choices.value = ['', '', '', '']
     correctChoice.value = 0
   }
@@ -2259,6 +2285,12 @@ onUnmounted(() => {
   bottom: 0;
   width: 8px;
   cursor: col-resize;
+}
+
+/* Mobile drawer toggle/backdrop for the quiz sidebar: hidden entirely above the breakpoint below */
+.btn-mobile-quiz-toggle,
+.mobile-sidebar-backdrop {
+  display: none;
 }
 
 .select-quiz-hint {
@@ -3653,19 +3685,73 @@ onUnmounted(() => {
 }
 
 /* Responsive Design */
-@media (max-width: 1200px) {
+@media (max-width: 768px) {
+  /* The quiz sidebar becomes a slide-out drawer over the questions panel, which takes the full
+     width; .btn-mobile-quiz-toggle opens/closes it and a backdrop closes it on outside tap. */
   .quiz-management {
-    flex-direction: column;
+    display: block;
+    position: relative;
   }
 
-  .quiz-section {
-    max-width: 100%;
-    padding-right: 0;
+  .btn-mobile-quiz-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    margin-bottom: 0.75rem;
+    padding: 0.65rem 0.9rem;
+    background: var(--bg-overlay-10);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
   }
 
-  .questions-editor-section {
-    max-width: 100%;
-    padding-left: 0;
+  .btn-mobile-quiz-toggle span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+
+  .mobile-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 199;
+  }
+
+  .quiz-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 85%;
+    max-width: 320px;
+    z-index: 200;
+    background: var(--bg-secondary);
+    padding: 1rem;
+    border-right: 1px solid var(--border-color);
+    overflow-y: auto;
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.3);
+  }
+
+  .quiz-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .quiz-sidebar::after {
+    display: none; /* drag-to-resize doesn't apply once the sidebar is a fixed-width drawer */
+  }
+
+  .questions-sidebar {
+    padding: 0;
   }
 }
 
@@ -3740,10 +3826,6 @@ onUnmounted(() => {
   .btn-secondary,
   .btn-delete {
     padding: 0.5rem 0.75rem;
-  }
-
-  .quiz-management {
-    flex-direction: column;
   }
 
   .about-grid {

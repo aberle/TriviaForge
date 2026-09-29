@@ -26,6 +26,15 @@
           @drop="onRoundDrop($event, group.roundIdx, 'start')"
         >
           <div class="round-header-top">
+            <button
+              type="button"
+              class="btn-collapse"
+              :title="isCollapsed(group.roundIdx) ? 'Expand round' : 'Collapse round'"
+              :aria-expanded="!isCollapsed(group.roundIdx)"
+              @click="toggleCollapsed(group.roundIdx)"
+            >
+              <AppIcon :name="isCollapsed(group.roundIdx) ? 'chevron-right' : 'chevron-down'" size="sm" />
+            </button>
             <AppIcon name="layers" size="sm" class="round-icon" />
             <input
               class="round-title-input"
@@ -56,6 +65,7 @@
             <span class="round-count">{{ group.items.length }} question{{ group.items.length === 1 ? '' : 's' }}</span>
           </div>
         </div>
+        <div v-if="!isCollapsed(group.roundIdx)" class="round-questions">
         <div v-if="hasRounds && group.items.length === 0" class="empty-state empty-round"><em>No questions in this round (skipped when played)</em></div>
         <div
           v-for="item in group.items"
@@ -100,13 +110,16 @@
             <button @click.stop="$emit('deleteQuestion', item.idx)" class="btn-delete" title="Delete"><AppIcon name="trash-2" size="sm" /></button>
           </div>
         </div>
+        </div>
         <!-- Every round has a drop zone at its end (the only target in an empty round). It is always in the
              layout and only fades in while dragging: adding elements when a drag starts moves the dragged
-             question, and Chrome then cancels the drag -->
+             question, and Chrome then cancels the drag. It's shrunk while collapsed, since a collapsed
+             round has no questions to leave visual room for, and several collapsed rounds in a row
+             shouldn't be spaced as if they were full of content. -->
         <div
           v-if="hasRounds"
           class="round-end-drop"
-          :class="{ armed: draggedQuestionIdx !== null, 'drop-active': isRoundTarget(group.roundIdx, 'end') }"
+          :class="{ armed: draggedQuestionIdx !== null, 'drop-active': isRoundTarget(group.roundIdx, 'end'), collapsed: isCollapsed(group.roundIdx) }"
           @dragover="onRoundOver($event, group.roundIdx, 'end')"
           @drop="onRoundDrop($event, group.roundIdx, 'end')"
         >
@@ -119,7 +132,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onUnmounted } from 'vue';
+import { computed, ref, watch, onUnmounted } from 'vue';
 import AppIcon from '@/components/common/AppIcon.vue';
 
 const props = defineProps({
@@ -130,7 +143,10 @@ const props = defineProps({
   draggedQuestionIdx: { type: [Number, null], default: null },
   // Where the dragged question would land: { type: 'question', idx, position: 'before'|'after' }
   // or { type: 'round', roundIdx, position: 'start'|'end' }
-  dragOverTarget: { type: Object, default: null }
+  dragOverTarget: { type: Object, default: null },
+  // The New/Edit Question modal, and which round its "Add to round" dropdown is currently set to
+  showQuestionModal: { type: Boolean, default: false },
+  questionRoundIndex: { type: [Number, null], default: null }
 });
 
 const emit = defineEmits([
@@ -155,6 +171,63 @@ const emit = defineEmits([
 ]);
 
 const hasRounds = computed(() => props.rounds.length > 0);
+
+// Only one round can be expanded at a time, so admins editing one round aren't confronted with every
+// other round's questions too; expanding a round collapses whichever one was open. Rounds start
+// collapsed when a quiz is selected, and a round added afterwards (with addRound) becomes the one
+// expanded round, since it's new and empty. This is a per-session convenience, not saved anywhere.
+const expandedRoundIdx = ref(null); // null = every round collapsed
+// A quiz without rounds has a single, implicit group (roundIdx 0) that must never collapse: there's
+// no header/toggle for it at all, so hiding its questions would make them permanently unreachable.
+const isCollapsed = (roundIdx) => hasRounds.value && expandedRoundIdx.value !== roundIdx;
+const toggleCollapsed = (roundIdx) => {
+  expandedRoundIdx.value = expandedRoundIdx.value === roundIdx ? null : roundIdx;
+};
+
+// A different quiz was selected: collapse every round, once its rounds actually arrive (selecting a
+// quiz updates `selectedQuiz` synchronously, but `rounds`/`questions` only catch up once the parent's
+// fetch resolves, so collapsing here immediately would collapse an empty, stale list). A round added
+// or removed afterwards on the SAME quiz (addRound, deleteRound, etc.) must not re-trigger this, or
+// every edit would collapse the round the admin just opened.
+let awaitingInitialRounds = false;
+let previousRoundCount = 0;
+watch(
+  () => props.selectedQuiz?.id,
+  () => {
+    awaitingInitialRounds = true;
+  },
+  { immediate: true }
+);
+watch(
+  () => props.rounds, // a shallow (reference) watch: the parent reassigns this array on every reload.
+  // Not immediate: at the moment a quiz is first selected, `rounds` is still the PREVIOUS quiz's (or
+  // empty); this must wait for the real value to arrive as an actual reactive update, not fire once
+  // upfront with whatever was there before that happens.
+  () => {
+    const count = props.rounds.length;
+    if (awaitingInitialRounds) {
+      awaitingInitialRounds = false;
+      expandedRoundIdx.value = null;
+    } else if (count > previousRoundCount) {
+      expandedRoundIdx.value = count - 1; // a round was just added: it becomes the expanded one
+    } else if (count < previousRoundCount) {
+      expandedRoundIdx.value = null; // a round was removed: indexes may have shifted, so start fresh
+    }
+    previousRoundCount = count;
+  }
+);
+
+// The New/Edit Question modal targets a round via its own dropdown; while it's open, that round is
+// the one shown expanded underneath, so whatever gets added or changed is immediately visible once
+// the modal closes (otherwise saving a question into a collapsed round would look like nothing
+// happened). Closing the modal leaves the round expanded rather than reverting it.
+watch(
+  () => (props.showQuestionModal ? props.questionRoundIndex : null),
+  (roundIdx) => {
+    if (roundIdx === null || !hasRounds.value) return;
+    expandedRoundIdx.value = roundIdx;
+  }
+);
 
 // Auto-scroll the questions list while dragging a question near its top or bottom edge: without
 // this, a question can never be dragged into a round that's off-screen, since the drag can't scroll
@@ -342,7 +415,7 @@ h2 {
 .questions-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
@@ -413,6 +486,19 @@ h2 {
   color: transparent;
   font-size: 0.85rem;
   flex-shrink: 0;
+  transition: min-height 0.15s ease;
+}
+
+.round-end-drop.collapsed {
+  min-height: 10px;
+  padding: 0;
+}
+
+/* ...but while a drag is actually in progress, grow it back to a comfortable target to drop on,
+   even though the round is collapsed */
+.round-end-drop.collapsed.armed {
+  min-height: 40px;
+  padding: 0.35rem;
 }
 
 .round-end-drop.armed {
@@ -503,7 +589,19 @@ h2 {
 .round-group {
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Wraps an expanded round's questions in their own border, so it's clear at a glance which
+   questions belong to the round whose header is open above them. */
+.round-questions {
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
+  padding: 0.6rem;
+  border: 2px solid var(--info-light);
+  border-radius: 8px;
+  background: var(--info-bg-10);
 }
 
 .round-header {
@@ -531,6 +629,23 @@ h2 {
 
 .round-icon {
   color: var(--info-light);
+}
+
+.btn-collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  border: none;
+  background: transparent;
+  color: var(--info-light);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.btn-collapse:hover {
+  background: var(--info-bg-20);
 }
 
 .round-title-input {

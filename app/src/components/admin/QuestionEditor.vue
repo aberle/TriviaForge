@@ -244,8 +244,9 @@ const handleImageLoad = () => {
 
 // Handle question type change
 const handleTypeChange = (newType) => {
+  const oldType = props.questionType;
   emit('update:questionType', newType);
-  emit('setChoicesForType', newType);
+  emit('setChoicesForType', newType, oldType);
 };
 
 const handleChoiceDragStart = (idx) => {

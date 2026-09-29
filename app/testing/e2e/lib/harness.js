@@ -304,6 +304,25 @@ export async function finishReviewOnClose(presenterBot, room, { since = 0, timeo
   return review;
 }
 
+/**
+ * The admin Questions panel: only one round is ever expanded at a time (clicking a collapsed round's
+ * toggle collapses whichever one was open). Ensures `roundIdx` is the expanded one -- a no-op if it
+ * already is -- and optionally waits for its own `.question-item` count to settle, since collapsing
+ * one round and expanding another isn't instant. Tests of the collapsing feature itself manage
+ * collapse state directly instead of calling this.
+ */
+export async function expandRound(page, roundIdx, questionCount) {
+  await page.eval(`(() => {
+    const b = document.querySelectorAll('.btn-collapse')[${roundIdx}];
+    if (b && b.getAttribute('aria-expanded') === 'false') b.click();
+    return true;
+  })()`);
+  if (questionCount !== undefined) {
+    await page.waitFor(`document.querySelectorAll('.question-item').length === ${questionCount}`, { timeout: 8000 });
+  }
+  await sleep(250);
+}
+
 /** Pick a choice by its text inside the question card at `cardIndex`. */
 export function pick(page, cardIndex, choiceText) {
   return page.eval(`(() => {

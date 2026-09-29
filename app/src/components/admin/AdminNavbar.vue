@@ -1,7 +1,7 @@
 <template>
   <nav class="navbar">
     <div class="navbar-brand">
-      <AppIcon name="clipboard-list" class="brand-icon" /> TriviaForge Admin
+      <AppIcon name="clipboard-list" class="brand-icon" /> {{ appName }} Admin
     </div>
 
     <div class="navbar-links">
@@ -77,7 +77,7 @@ import { useRoute } from 'vue-router';
 import AppIcon from '@/components/common/AppIcon.vue';
 import { useServerConfig } from '@/composables/useServerConfig.js'
 
-const { soloEnabled } = useServerConfig()
+const { soloEnabled, appName } = useServerConfig()
 
 defineProps({
   username: { type: String, default: 'Admin' },

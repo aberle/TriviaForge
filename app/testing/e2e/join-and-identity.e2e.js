@@ -145,6 +145,25 @@ await runSuite(
     })()`);
     ok("the join form's box isn't stretched to fill the tall screen, leaving a lot of empty space under it", sidebar.boxHeight < sidebar.contentHeight + 40, JSON.stringify(sidebar));
     ok('and it never gets its own (pointless) scrollbar (not even from sub-pixel rounding)', !sidebar.canScroll, JSON.stringify(sidebar));
+
+    section('Join Room is disabled until a display name is entered');
+    // A display name remembered from an earlier scenario in this suite would auto-fill the field
+    // (intentional convenience elsewhere), so start this check with nothing saved for it. A fresh
+    // room (not roomB, which earlier scenarios in this suite have already joined under this same
+    // browser identity) avoids the "already joined this room" auto-fill kicking in and racing our typing.
+    const untriedRoom = await env.newRoom();
+    await landing.eval(`localStorage.removeItem('playerDisplayName'); true`);
+    await landing.goto(`${BASE}/player`);
+    await landing.waitFor(`!!document.querySelector('#roomCodeManual')`);
+    ok('disabled with nothing entered', await landing.eval(`document.querySelector('.btn-primary').disabled`));
+    await landing.fill('#roomCodeManual', untriedRoom);
+    ok('still disabled with only a room code typed in', await landing.eval(`document.querySelector('.btn-primary').disabled`));
+    await landing.fill('#playerDisplayName', 'Dee');
+    await sleep(150);
+    ok('enabled once a display name is typed in', !(await landing.eval(`document.querySelector('.btn-primary').disabled`)));
+    await landing.fill('#playerDisplayName', '   ');
+    await sleep(150);
+    ok('disabled again for a whitespace-only name', await landing.eval(`document.querySelector('.btn-primary').disabled`));
     await landing.closeTab();
 
     section('QR links (?room=)');

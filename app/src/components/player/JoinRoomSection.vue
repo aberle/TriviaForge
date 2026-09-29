@@ -52,7 +52,7 @@
       <button type="button" class="link-btn" @click="unlock">Not the right room? Change room code</button>
     </p>
 
-    <button class="btn-primary" @click="$emit('joinRoom')">Join Room</button>
+    <button class="btn-primary" :disabled="!displayNameInput.trim()" :title="!displayNameInput.trim() ? 'Enter a display name first' : ''" @click="$emit('joinRoom')">Join Room</button>
     <button v-if="!guestOnly" class="btn-secondary" @click="$emit('manageAccount')">Manage Account</button>
   </div>
 </template>
@@ -191,6 +191,16 @@ const unlock = async () => {
 
 .btn-primary:hover {
   background: var(--info-bg-50);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--info-bg-30);
+}
+
+.btn-primary:disabled:hover {
+  background: var(--info-bg-30);
 }
 
 .btn-secondary {

@@ -25,8 +25,11 @@ const SUITES = [
   { file: 'admin-authoring.e2e.js', browser: true },
   { file: 'admin-quiz-management.e2e.js', browser: true },
   { file: 'admin-drag-autoscroll.e2e.js', browser: true },
+  { file: 'admin-mobile-layout.e2e.js', browser: true },
   { file: 'solo-mode.e2e.js', browser: true },
+  { file: 'app-name.e2e.js', browser: true },
   { file: 'presenter-display-flow.e2e.js', browser: true },
+  { file: 'presenter-mobile-layout.e2e.js', browser: true },
   { file: 'round-countdown.e2e.js', browser: true },
   { file: 'answer-override-ui.e2e.js', browser: true },
   { file: 'round-review.e2e.js', browser: true },
@@ -37,6 +40,7 @@ const SUITES = [
   { file: 'question-bank.e2e.js', browser: false },
   { file: 'excel-import.e2e.js', browser: false },
   { file: 'use-rounds-composable.e2e.js', browser: false },
+  { file: 'csrf-cookie-security.e2e.js', browser: false },
 ];
 
 const args = process.argv.slice(2);

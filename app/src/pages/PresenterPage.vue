@@ -12,8 +12,21 @@
 
     <!-- Main Content -->
     <div class="presenter-container">
+      <button
+        type="button"
+        class="btn-mobile-sidebar-toggle"
+        :aria-expanded="showSidebarMobile"
+        @click="showSidebarMobile = !showSidebarMobile"
+      >
+        <AppIcon name="list" size="sm" />
+        <span>{{ currentRoomCode ? `Room ${currentRoomCode}` : 'Create / manage rooms' }}</span>
+        <AppIcon :name="showSidebarMobile ? 'chevron-up' : 'chevron-down'" size="sm" />
+      </button>
+      <div v-if="showSidebarMobile" class="mobile-sidebar-backdrop" @click="showSidebarMobile = false"></div>
+
       <!-- Left Column: Sidebar -->
       <PresenterSidebar
+        :class="{ 'mobile-open': showSidebarMobile }"
         :quizzes="quizzes"
         :selectedQuizFilename="selectedQuizFilename"
         @update:selectedQuizFilename="selectedQuizFilename = $event"
@@ -216,6 +229,7 @@ import { useRouter } from 'vue-router'
 import Modal from '@/components/common/Modal.vue'
 import Button from '@/components/common/Button.vue'
 import FormInput from '@/components/common/FormInput.vue'
+import AppIcon from '@/components/common/AppIcon.vue'
 import PresenterNavbar from '@/components/presenter/PresenterNavbar.vue'
 import PresenterSidebar from '@/components/presenter/PresenterSidebar.vue'
 import QuizDisplay from '@/components/presenter/QuizDisplay.vue'
@@ -277,6 +291,13 @@ let dialogResolve = null
 const selectedQuizFilename = ref('')
 const quizzes = ref([])
 const currentRoomCode = ref(null)
+// On mobile, the sidebar (Create Room, active rooms, sessions) becomes a collapsible drawer instead
+// of a fixed column. Starts open so there's something to act on; going live with a room closes it so
+// the game itself gets the screen.
+const showSidebarMobile = ref(true)
+watch(currentRoomCode, (code) => {
+  if (code) showSidebarMobile.value = false
+})
 const currentQuizFilename = ref(null) // Track quiz filename for reconnection
 const currentQuizTitle = ref('')
 const currentQuestions = ref([])
@@ -1214,6 +1235,12 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+/* Mobile drawer toggle/backdrop for the sidebar: hidden entirely above the breakpoint below */
+.btn-mobile-sidebar-toggle,
+.mobile-sidebar-backdrop {
+  display: none;
+}
+
 .dialog-message {
   margin: 0;
   color: var(--text-tertiary);
@@ -1240,7 +1267,44 @@ onUnmounted(() => {
 
 @media (max-width: 900px) {
   .presenter-container {
-    grid-template-columns: 1fr;
+    /* Switch away from grid entirely, not just to a single column: a single-column grid still lays
+       out the toggle button, the game view and the players list as separate auto-sized ROWS, and
+       with no explicit grid-template-rows, leftover container height gets distributed across those
+       "auto" rows (align-content's default "stretch"-like behavior) -- stretching the toggle button
+       itself to a few hundred pixels tall. Flex-column sizes each child to its own content instead. */
+    display: flex;
+    flex-direction: column;
+  }
+
+  .btn-mobile-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.65rem 0.9rem;
+    background: var(--bg-overlay-10);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-mobile-sidebar-toggle span {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+
+  .mobile-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 199;
   }
 }
 

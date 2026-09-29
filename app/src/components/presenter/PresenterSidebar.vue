@@ -195,9 +195,30 @@ const formatSessionDate = (session) => {
   padding: 1rem;
 }
 
+/* Below this width, PresenterPage's grid collapses to one column; rather than stacking the sidebar
+   above the game and pushing it down the page, it becomes a slide-out drawer (opened/closed from
+   PresenterPage, which owns the toggle button and backdrop that control `.mobile-open`). */
 @media (max-width: 900px) {
   .presenter-sidebar {
-    max-height: 50vh;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 85%;
+    max-width: 320px;
+    max-height: none;
+    z-index: 200;
+    border-radius: 0;
+    border-left: none;
+    border-top: none;
+    border-bottom: none;
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.3);
+  }
+
+  .presenter-sidebar.mobile-open {
+    transform: translateX(0);
   }
 }
 

@@ -13,9 +13,11 @@ export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Launch headless Chrome with a throwaway profile (so nothing is remembered between runs).
+ * @param {string[]} extraArgs - Extra Chrome command-line flags (e.g. --host-resolver-rules, to make
+ *   a hostname that isn't literally "localhost" resolve locally for a real non-secure-context test).
  * @returns {Promise<{port: number, close: () => void}>}
  */
-export async function launchChrome() {
+export async function launchChrome(extraArgs = []) {
   const binary = findChrome();
   if (!binary) {
     throw new Error('Chrome not found. Install Chrome/Chromium or set CHROME_PATH to its executable.');
@@ -33,6 +35,7 @@ export async function launchChrome() {
       '--disable-gpu',
       '--hide-scrollbars',
       '--no-sandbox', // needed when running as root in containers/CI
+      ...extraArgs,
       'about:blank',
     ],
     { stdio: 'ignore' }

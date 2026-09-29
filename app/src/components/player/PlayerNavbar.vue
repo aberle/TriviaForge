@@ -115,7 +115,7 @@ import AppIcon from '@/components/common/AppIcon.vue';
 import { useAuthStore } from '@/stores/auth.js';
 import { useServerConfig } from '@/composables/useServerConfig.js'
 
-const { soloEnabled } = useServerConfig()
+const { soloEnabled, appName } = useServerConfig()
 
 const route = useRoute();
 const authStore = useAuthStore();
@@ -128,11 +128,11 @@ const props = defineProps({
   menuOpen: { type: Boolean, required: true },
   nonSpectatorPlayers: { type: Array, required: true },
   loginUsername: { type: String, default: '' },
-  // The name of the quiz being played (shown instead of "TriviaForge Player" while in a room)
+  // The name of the quiz being played (shown instead of "<appName> Player" while in a room)
   quizTitle: { type: String, default: '' }
 });
 
-const brandTitle = computed(() => (props.inRoom && props.quizTitle ? props.quizTitle : 'TriviaForge Player'));
+const brandTitle = computed(() => (props.inRoom && props.quizTitle ? props.quizTitle : `${appName.value} Player`));
 
 defineEmits(['showProgress', 'toggleMenu', 'leaveRoom', 'logout']);
 </script>

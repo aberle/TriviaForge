@@ -2,7 +2,7 @@
   <nav class="navbar">
     <div class="navbar-brand">
       <AppIcon name="bar-chart-3" class="brand-icon" />
-      <span>TriviaForge Stats</span>
+      <span>{{ appName }} Stats</span>
     </div>
 
     <div class="navbar-links">
@@ -116,7 +116,7 @@ import { useAuthStore } from '@/stores/auth.js'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { useServerConfig } from '@/composables/useServerConfig.js'
 
-const { soloEnabled } = useServerConfig()
+const { soloEnabled, appName } = useServerConfig()
 
 defineProps({
   showLogout: { type: Boolean, default: false }

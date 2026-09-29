@@ -3,7 +3,7 @@
     <!-- Brand -->
     <div class="navbar-brand">
       <AppIcon name="presentation" class="brand-icon" />
-      TriviaForge Presenter
+      {{ appName }} Presenter
     </div>
 
     <!-- Room code badge -->
@@ -139,7 +139,7 @@ import { RouterLink } from 'vue-router'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { useServerConfig } from '@/composables/useServerConfig.js'
 
-const { soloEnabled } = useServerConfig()
+const { soloEnabled, appName } = useServerConfig()
 
 defineProps({
   currentRoomCode: { type: String, default: null },

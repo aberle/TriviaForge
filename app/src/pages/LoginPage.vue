@@ -1,7 +1,7 @@
 <template>
   <div class="login-container">
     <div class="login-box">
-      <h1 class="login-title"><AppIcon name="gamepad-2" size="2xl" /> Trivia Forge</h1>
+      <h1 class="login-title"><AppIcon name="gamepad-2" size="2xl" /> {{ appName }}</h1>
       <p class="login-subtitle">Admin & Presenter Access</p>
 
       <!-- Login Form -->
@@ -154,7 +154,7 @@ import FormInput from '@/components/common/FormInput.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { useServerConfig } from '@/composables/useServerConfig.js'
 
-const { soloEnabled } = useServerConfig()
+const { soloEnabled, appName } = useServerConfig()
 
 const router = useRouter()
 const authStore = useAuthStore()

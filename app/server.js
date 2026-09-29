@@ -203,7 +203,14 @@ const csrfProtection = doubleCsrf({
     // CHANGED: 'lax' allows cross-origin GET requests (mobile access via IP)
     // 'strict' would block all cross-origin requests, breaking mobile access
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // NOT tied to NODE_ENV: this app is deployed over plain http://<LAN-IP>:3000 (see README), with
+    // no built-in HTTPS. A `Secure` cookie is silently dropped by the browser on any insecure origin
+    // that isn't localhost, so a phone hitting the LAN IP (which can't use localhost) would never
+    // actually store the CSRF cookie at all -- every mutation would then fail CSRF validation
+    // unconditionally, while testing from a desktop against http://localhost kept working (localhost
+    // is treated as a secure context), masking the bug. Set per-request below, from the actual
+    // connection, so it still hardens correctly if this is ever put behind HTTPS.
+    secure: false,
     maxAge: env.sessionTimeout // Matches session timeout (default 1 hour)
   },
   size: 64,
@@ -363,12 +370,15 @@ const broadcastQuizResults = (roomCode, room) => {
 
 // Public, non-sensitive server settings the UI needs before anyone logs in
 app.get('/api/config', (req, res) => {
-  res.json({ guestOnly: env.guestOnly, soloMode: env.soloMode });
+  res.json({ guestOnly: env.guestOnly, soloMode: env.soloMode, appName: env.appName });
 });
 
 // CSRF token endpoint - GET is excluded from CSRF protection
 app.get('/api/csrf-token', (req, res) => {
-  const csrfToken = generateCsrfToken(req, res);
+  // Mark the cookie Secure only when this request actually arrived over HTTPS (directly, or via a
+  // trusted proxy's X-Forwarded-Proto -- see `trust proxy` above). Plain http://<LAN-IP> access,
+  // the documented default, gets a non-Secure cookie so the browser will actually store and send it.
+  const csrfToken = generateCsrfToken(req, res, { cookieOptions: { secure: req.secure } });
   res.json({ csrfToken });
 });
 

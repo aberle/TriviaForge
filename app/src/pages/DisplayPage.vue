@@ -36,7 +36,7 @@
 
       <!-- Waiting State -->
       <div v-else-if="!isQuestionDisplaying" class="waiting-display">
-        <h1 class="waiting-title"><AppIcon name="gamepad-2" size="2xl" /> Trivia Forge</h1>
+        <h1 class="waiting-title"><AppIcon name="gamepad-2" size="2xl" /> {{ appName }}</h1>
         <p class="waiting-text">Waiting for questions...</p>
       </div>
 
@@ -134,6 +134,7 @@ import { useSocket } from '@/composables/useSocket.js'
 import { useUIStore } from '@/stores/ui.js'
 import { useTheme } from '@/composables/useTheme.js'
 import { useRounds } from '@/composables/useRounds.js'
+import { useServerConfig } from '@/composables/useServerConfig.js'
 import Modal from '@/components/common/Modal.vue'
 import Button from '@/components/common/Button.vue'
 import FormInput from '@/components/common/FormInput.vue'
@@ -148,6 +149,7 @@ const socket = useSocket()
 const rounds = useRounds(socket)
 const { phase: roundPhase, current: roundCurrent, progress: roundProgress, lastEnded: roundLastEnded, review: roundReview } = rounds
 const uiStore = useUIStore()
+const { appName } = useServerConfig()
 
 // Initialize theme for DisplayPage (grey theme default)
 const { initTheme } = useTheme('DISPLAY')
