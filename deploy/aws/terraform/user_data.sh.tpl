@@ -6,11 +6,20 @@ set -euxo pipefail
 dnf update -y
 dnf install -y docker git
 
-# Amazon Linux 2023's docker package doesn't bundle the compose plugin; install it directly.
+# Amazon Linux 2023's docker package doesn't bundle the compose or buildx plugins; install both
+# directly. `compose build` shells out to buildx (0.17+) even for a plain single-image build, so
+# both are required, not just compose.
 mkdir -p /usr/libexec/docker/cli-plugins
 curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
   -o /usr/libexec/docker/cli-plugins/docker-compose
 chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+
+# buildx's release assets embed the version in the filename (no fixed-name "latest" asset like
+# compose has above), so resolve the actual latest tag from the redirect first.
+BUILDX_VERSION=$(curl -sI https://github.com/docker/buildx/releases/latest | grep -i '^location:' | sed -E 's#.*/tag/(v[0-9.]+).*#\1#' | tr -d '\r')
+curl -SL "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64" \
+  -o /usr/libexec/docker/cli-plugins/docker-buildx
+chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
 
 systemctl enable --now docker
 usermod -aG docker ec2-user
