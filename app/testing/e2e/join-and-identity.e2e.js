@@ -156,6 +156,7 @@ await runSuite(
     await landing.goto(`${BASE}/player`);
     await landing.waitFor(`!!document.querySelector('#roomCodeManual')`);
     ok('disabled with nothing entered', await landing.eval(`document.querySelector('.btn-primary').disabled`));
+    ok('no hint saying "this is what other players will see" -- the field is self-explanatory', !(await landing.has('other players will see')));
     await landing.fill('#roomCodeManual', untriedRoom);
     ok('still disabled with only a room code typed in', await landing.eval(`document.querySelector('.btn-primary').disabled`));
     await landing.fill('#playerDisplayName', 'Dee');

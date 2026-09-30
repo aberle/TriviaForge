@@ -33,9 +33,7 @@
       :class="{ 'display-name-locked': displayNameLocked }"
       @input="$emit('update:displayNameInput', $event.target.value)"
     />
-    <p class="form-hint">
-      {{ displayNameLocked ? "You've already joined this room, so your name can't be changed." : 'This is what other players will see' }}
-    </p>
+    <p v-if="displayNameLocked" class="form-hint">You've already joined this room, so your name can't be changed.</p>
 
     <label for="roomCodeManual">Room Code</label>
     <input

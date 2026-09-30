@@ -67,6 +67,26 @@
           <div class="theme-description">Muted grey-blue (Player)</div>
         </div>
 
+        <!-- Murder! Theme -->
+        <div
+          class="theme-card"
+          :class="{ active: currentTheme === 'murder' }"
+          @click="selectTheme('murder')"
+        >
+          <div class="theme-preview murder-preview">
+            <div class="preview-header"></div>
+            <div class="preview-content">
+              <div class="preview-box"></div>
+              <div class="preview-box"></div>
+            </div>
+          </div>
+          <div class="theme-label">
+            <span class="theme-name">Murder!</span>
+            <AppIcon v-if="currentTheme === 'murder'" name="check" size="lg" class="check-icon" />
+          </div>
+          <div class="theme-description">Blood red, stone and gold</div>
+        </div>
+
         <!-- System Theme -->
         <div
           class="theme-card"
@@ -274,6 +294,30 @@ h3 {
   background: #4a5568;
   border-radius: 4px;
   border: 1px solid #64748b;
+}
+
+/* Murder! Theme Preview */
+.murder-preview {
+  background: #1a0f0f;
+}
+
+.murder-preview .preview-header {
+  height: 25%;
+  background: linear-gradient(135deg, #7f1d1d 0%, #1a0f0f 100%);
+}
+
+.murder-preview .preview-content {
+  padding: 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.murder-preview .preview-box {
+  flex: 1;
+  height: 30px;
+  background: #2d1414;
+  border-radius: 4px;
+  border: 1px solid #4a2020;
 }
 
 /* System Theme Preview */

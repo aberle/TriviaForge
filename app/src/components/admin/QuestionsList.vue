@@ -17,15 +17,34 @@
         class="round-group"
         :class="{ 'drag-target': isDragTargetRound(group.roundIdx) }"
       >
-        <!-- Dropping on a round's header moves the dragged question to the top of that round -->
+        <!-- Dropping a question onto the top or bottom half of this header moves it to the start/end of
+             this round; dragging the header itself (by its drag handle) reorders the whole round instead,
+             dropping on the top or bottom half placing it before/after this round respectively (so any
+             round, including next to the first or last one, is a valid target -- not just landing exactly
+             on top of another round). -->
         <div
           v-if="hasRounds"
           class="round-header"
-          :class="{ 'drop-active': isRoundTarget(group.roundIdx, 'start') }"
-          @dragover="onRoundOver($event, group.roundIdx, 'start')"
-          @drop="onRoundDrop($event, group.roundIdx, 'start')"
+          :class="{
+            'drop-active': isRoundTarget(group.roundIdx, 'start'),
+            'drop-round-before': roundReorderPosition(group.roundIdx) === 'before',
+            'drop-round-after': roundReorderPosition(group.roundIdx) === 'after',
+            'dragging-round': draggedRoundIdx === group.roundIdx
+          }"
+          @dragover="onRoundHeaderOver($event, group.roundIdx)"
+          @drop="onRoundHeaderDrop($event, group.roundIdx)"
         >
           <div class="round-header-top">
+            <button
+              type="button"
+              class="btn-drag-handle"
+              title="Drag to reorder this round"
+              draggable="true"
+              @dragstart="handleRoundDragStart(group.roundIdx)"
+              @dragend="handleRoundDragEnd"
+            >
+              <AppIcon name="grip-vertical" size="sm" />
+            </button>
             <button
               type="button"
               class="btn-collapse"
@@ -35,7 +54,14 @@
             >
               <AppIcon :name="isCollapsed(group.roundIdx) ? 'chevron-right' : 'chevron-down'" size="sm" />
             </button>
-            <AppIcon name="layers" size="sm" class="round-icon" />
+            <button
+              type="button"
+              class="round-number"
+              :title="isCollapsed(group.roundIdx) ? 'Expand round' : 'Collapse round'"
+              @click="toggleCollapsed(group.roundIdx)"
+            >
+              Round {{ group.roundIdx + 1 }}
+            </button>
             <input
               class="round-title-input"
               type="text"
@@ -46,6 +72,12 @@
               @change="$emit('updateRound', { roundIdx: group.roundIdx, title: $event.target.value })"
             />
             <button @click="$emit('deleteRound', group.roundIdx)" class="btn-delete" title="Delete Round"><AppIcon name="trash-2" size="sm" /></button>
+          </div>
+          <div class="round-reorder-buttons">
+            <button @click="$emit('moveRoundToFirst', group.roundIdx)" class="btn-reorder" :disabled="group.isFirstRound" title="Move to First"><AppIcon name="chevrons-up" size="sm" /></button>
+            <button @click="$emit('moveRoundUp', group.roundIdx)" class="btn-reorder" :disabled="group.isFirstRound" title="Move Up"><AppIcon name="chevron-up" size="sm" /></button>
+            <button @click="$emit('moveRoundDown', group.roundIdx)" class="btn-reorder" :disabled="group.isLastRound" title="Move Down"><AppIcon name="chevron-down" size="sm" /></button>
+            <button @click="$emit('moveRoundToLast', group.roundIdx)" class="btn-reorder" :disabled="group.isLastRound" title="Move to Last"><AppIcon name="chevrons-down" size="sm" /></button>
           </div>
           <div class="round-header-bottom">
             <label class="round-time-label">
@@ -112,10 +144,13 @@
         </div>
         </div>
         <!-- Every round has a drop zone at its end (the only target in an empty round). It is always in the
-             layout and only fades in while dragging: adding elements when a drag starts moves the dragged
-             question, and Chrome then cancels the drag. It's shrunk while collapsed, since a collapsed
-             round has no questions to leave visual room for, and several collapsed rounds in a row
-             shouldn't be spaced as if they were full of content. -->
+             layout and only fades in while dragging a QUESTION: adding elements when a drag starts moves
+             the dragged question, and Chrome then cancels the drag. It's shrunk while collapsed, since a
+             collapsed round has no questions to leave visual room for, and several collapsed rounds in a
+             row shouldn't be spaced as if they were full of content. It plays no part in reordering a
+             ROUND (the header's own top/bottom halves already cover every insertion point, including
+             before the first round and after the last one) -- onRoundOver/onRoundDrop below no-op
+             entirely while a round is being dragged, so it never reacts or shows its text then. -->
         <div
           v-if="hasRounds"
           class="round-end-drop"
@@ -144,6 +179,12 @@ const props = defineProps({
   // Where the dragged question would land: { type: 'question', idx, position: 'before'|'after' }
   // or { type: 'round', roundIdx, position: 'start'|'end' }
   dragOverTarget: { type: Object, default: null },
+  // A whole round being dragged by its handle, to reorder it relative to the others -- separate from
+  // draggedQuestionIdx/dragOverTarget above, which are about individual questions
+  draggedRoundIdx: { type: [Number, null], default: null },
+  roundDropTargetIdx: { type: [Number, null], default: null },
+  // 'before' or 'after' roundDropTargetIdx -- which half of its header the drag is currently over
+  roundDropPosition: { type: [String, null], default: null },
   // The New/Edit Question modal, and which round its "Add to round" dropdown is currently set to
   showQuestionModal: { type: Boolean, default: false },
   questionRoundIndex: { type: [Number, null], default: null }
@@ -157,6 +198,14 @@ const emit = defineEmits([
   'addRound',
   'updateRound',
   'deleteRound',
+  'moveRoundUp',
+  'moveRoundDown',
+  'moveRoundToFirst',
+  'moveRoundToLast',
+  'roundDragStart',
+  'roundDragOver',
+  'roundDrop',
+  'roundDragEnd',
   'moveQuestionToRound',
   'editQuestion',
   'moveQuestionUp',
@@ -286,6 +335,8 @@ const groups = computed(() => {
     return {
       roundIdx,
       round,
+      isFirstRound: roundIdx === 0,
+      isLastRound: roundIdx === roundList.length - 1,
       items: items.map((item, i) => ({ ...item, isFirst: i === 0, isLast: i === items.length - 1 }))
     };
   });
@@ -321,15 +372,61 @@ const onItemDrop = (event, idx) => {
   emit('questionDrop', event, questionTarget(event, idx));
 };
 
-// Over a round's header ('start') or its end zone ('end')
+// Over a round's header ('start') or its end zone ('end') -- for a dragged QUESTION only. While a
+// ROUND is being dragged instead, this must do nothing at all: not preventDefault (so the browser's
+// own "not a valid drop target" cursor shows here), and not emit anything -- otherwise hovering a
+// round's end-of-round zone while dragging another ROUND would set (and then never clear, since
+// nothing tied to a round drag clears it) the "drop here to add to X" question-drop highlighting,
+// which doesn't even make sense for a round drag in the first place.
 const onRoundOver = (event, roundIdx, position) => {
+  if (props.draggedRoundIdx !== null) return;
   event.preventDefault();
   emit('questionDragOver', { type: 'round', roundIdx, position });
 };
 
 const onRoundDrop = (event, roundIdx, position) => {
+  if (props.draggedRoundIdx !== null) return;
   event.preventDefault();
   emit('questionDrop', event, { type: 'round', roundIdx, position });
+};
+
+// A round header serves double duty as a drop target: dropping a QUESTION there moves it to the
+// top of that round (existing behavior above), but if a ROUND is what's actually being dragged
+// (by its own handle), the same hover/drop instead means "reorder this round to here" -- which half
+// of the header (top or bottom) the pointer is over decides whether it lands before or after this
+// round, so every position (including before the first round and after the last one) is reachable
+// without needing to land exactly on top of another round.
+const handleRoundDragStart = (roundIdx) => {
+  emit('roundDragStart', roundIdx);
+};
+
+const handleRoundDragEnd = () => {
+  emit('roundDragEnd');
+};
+
+const headerDropPosition = (event) => {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+};
+
+const onRoundHeaderOver = (event, roundIdx) => {
+  event.preventDefault();
+  if (props.draggedRoundIdx !== null) {
+    if (props.draggedRoundIdx === roundIdx) return;
+    emit('roundDragOver', { roundIdx, position: headerDropPosition(event) });
+  } else {
+    onRoundOver(event, roundIdx, 'start');
+  }
+};
+
+const onRoundHeaderDrop = (event, roundIdx) => {
+  event.preventDefault();
+  if (props.draggedRoundIdx !== null) {
+    if (props.draggedRoundIdx === roundIdx) return;
+    emit('roundDrop', event, { roundIdx, position: headerDropPosition(event) });
+  } else {
+    onRoundDrop(event, roundIdx, 'start');
+  }
 };
 
 // Highlighting helpers
@@ -338,6 +435,10 @@ const isQuestionTarget = (idx, position) =>
 
 const isRoundTarget = (roundIdx, position) =>
   props.dragOverTarget?.type === 'round' && props.dragOverTarget.roundIdx === roundIdx && props.dragOverTarget.position === position;
+
+// 'before'/'after' if this round is the current round-reorder drop target, else null
+const roundReorderPosition = (roundIdx) =>
+  props.draggedRoundIdx !== null && props.roundDropTargetIdx === roundIdx ? props.roundDropPosition : null;
 
 // The round the dragged question would end up in (whether over its header, end zone or a question)
 const isDragTargetRound = (roundIdx) => {
@@ -474,6 +575,16 @@ h2 {
   border-color: var(--warning-light);
 }
 
+/* A round being dragged over another one's header: a line on the edge it would land next to, same
+   convention as .question-item's drop-before/drop-after */
+.round-header.drop-round-before {
+  box-shadow: 0 -4px 0 0 var(--warning-light);
+}
+
+.round-header.drop-round-after {
+  box-shadow: 0 4px 0 0 var(--warning-light);
+}
+
 .round-end-drop {
   display: flex;
   align-items: center;
@@ -540,15 +651,22 @@ h2 {
 
 .question-actions {
   display: flex;
+  flex-wrap: nowrap;
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 1rem;
   background: var(--bg-tertiary-40);
   border-top: 1px solid var(--border-color);
+  /* Last-resort safety net: if a narrow panel genuinely can't fit everything even after the round
+     select has shrunk to its floor below, scroll this row horizontally rather than wrapping the
+     reorder buttons onto a second line or letting the layout break. */
+  overflow-x: auto;
 }
 
 .reorder-buttons {
   display: flex;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
   gap: 0.25rem;
 }
 
@@ -580,6 +698,7 @@ h2 {
   background: var(--danger-bg-20);
   border: 1px solid var(--danger-light);
   color: var(--danger-light);
+  flex-shrink: 0;
 }
 
 .btn-delete:hover {
@@ -622,13 +741,67 @@ h2 {
   gap: 0.5rem;
 }
 
+.round-header-top {
+  /* Same last-resort safety net as .question-actions: at a narrow enough width, the title input
+     (the one flexible element here) hits its min-width floor below before everything else would
+     have room to fit on one line. */
+  overflow-x: auto;
+}
+
 .round-header-bottom {
   justify-content: space-between;
   flex-wrap: wrap;
 }
 
-.round-icon {
+.round-number {
+  flex-shrink: 0;
   color: var(--info-light);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  padding: 0.2rem 0.3rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.round-number:hover {
+  background: var(--info-bg-20);
+}
+
+.btn-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: grab;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.btn-drag-handle:hover {
+  background: var(--info-bg-20);
+  color: var(--info-light);
+}
+
+.btn-drag-handle:active {
+  cursor: grabbing;
+}
+
+.round-reorder-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  gap: 0.25rem;
+}
+
+.round-header.dragging-round {
+  opacity: 0.5;
 }
 
 .btn-collapse {
@@ -650,7 +823,7 @@ h2 {
 
 .round-title-input {
   flex: 1;
-  min-width: 0;
+  min-width: 4rem;
   padding: 0.4rem 0.6rem;
   background: var(--bg-overlay-20);
   border: 1px solid var(--border-color);
@@ -689,7 +862,7 @@ h2 {
 
 .round-select {
   flex: 1 1 auto;
-  min-width: 5rem;
+  min-width: 3rem;
   max-width: 14rem;
   padding: 0.35rem 0.5rem;
   background: var(--bg-overlay-20);
@@ -725,10 +898,6 @@ h2 {
 @media (max-width: 1024px) {
   .questions-sidebar {
     border-top: 1px solid var(--border-color);
-  }
-
-  .reorder-buttons {
-    flex-wrap: wrap;
   }
 }
 </style>

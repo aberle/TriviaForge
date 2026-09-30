@@ -25,6 +25,12 @@ await runSuite('app name', { chrome: true }, async ({ ok, env }) => {
 
   await check('/', '.login-title', 'the login page');
   await check('/player', '.brand-title', 'the player page');
+
+  const landing = await env.open(`${BASE}/player`, { width: 1200, height: 900 });
+  await sleep(700);
+  const brand = await landing.eval(`document.querySelector('.brand-title')?.innerText`);
+  ok('outside a room, the player page brand is just the app name, with no "Player" suffix', brand === expected, JSON.stringify(brand));
+  await landing.closeTab();
   await env.adminPage('/admin').then(async (page) => {
     await sleep(700);
     const text = await page.eval(`document.querySelector('.navbar-brand')?.innerText`);

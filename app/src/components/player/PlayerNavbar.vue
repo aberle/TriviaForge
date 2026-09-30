@@ -128,11 +128,11 @@ const props = defineProps({
   menuOpen: { type: Boolean, required: true },
   nonSpectatorPlayers: { type: Array, required: true },
   loginUsername: { type: String, default: '' },
-  // The name of the quiz being played (shown instead of "<appName> Player" while in a room)
+  // The name of the quiz being played (shown instead of the app name while in a room)
   quizTitle: { type: String, default: '' }
 });
 
-const brandTitle = computed(() => (props.inRoom && props.quizTitle ? props.quizTitle : `${appName.value} Player`));
+const brandTitle = computed(() => (props.inRoom && props.quizTitle ? props.quizTitle : appName.value));
 
 defineEmits(['showProgress', 'toggleMenu', 'leaveRoom', 'logout']);
 </script>

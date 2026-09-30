@@ -367,6 +367,113 @@
 }
 
 /* ============================================
+   MURDER! THEME
+   Styled after The Traitors: blood red, near-black stone, and gold
+   ============================================ */
+[data-theme="murder"] {
+  /* Primary Colors - Blood red */
+  --primary-color: #b91c1c;
+  --primary-light: #dc2626;
+  --primary-dark: #7f1d1d;
+
+  /* Secondary Colors - Gold, standing in for the show's signature accent */
+  --secondary-color: #ca8a04;
+  --secondary-light: #eab308;
+  --secondary-dark: #a16207;
+
+  /* Danger Red Colors - A brighter crimson, distinct from the primary blood red */
+  --danger-color: #dc2626;
+  --danger-light: #ef4444;
+  --danger-dark: #991b1b;
+
+  /* Warning Orange Colors - Amber/gold */
+  --warning-color: #d97706;
+  --warning-light: #f59e0b;
+  --warning-dark: #b45309;
+
+  /* Info Colors - Cold castle-stone steel, for contrast against all the red and gold */
+  --info-color: #64748b;
+  --info-light: #94a3b8;
+  --info-dark: #475569;
+
+  /* Background Colors - Near-black, gothic castle at night */
+  --bg-primary: #1a0f0f;
+  --bg-secondary: #0d0707;
+  --bg-tertiary: #2d1414;
+  --bg-accent: #7f1d1d;
+
+  /* Text Colors - Warm parchment */
+  --text-primary: #f5e6d3;
+  --text-secondary: #d4c4a8;
+  --text-tertiary: #a89684;
+
+  /* Border Colors */
+  --border-color: #4a2020;
+  --border-dark: #2d1414;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+
+  /* Semi-transparent variants for backgrounds (Murder theme) */
+  --primary-bg-10: rgba(185, 28, 28, 0.1);
+  --primary-bg-20: rgba(185, 28, 28, 0.2);
+  --primary-bg-30: rgba(185, 28, 28, 0.3);
+  --primary-bg-40: rgba(185, 28, 28, 0.4);
+  --primary-bg-50: rgba(185, 28, 28, 0.5);
+  --primary-bg-60: rgba(185, 28, 28, 0.6);
+  --primary-bg-70: rgba(185, 28, 28, 0.7);
+
+  --secondary-bg-10: rgba(202, 138, 4, 0.1);
+  --secondary-bg-20: rgba(202, 138, 4, 0.2);
+  --secondary-bg-30: rgba(202, 138, 4, 0.3);
+  --secondary-bg-40: rgba(202, 138, 4, 0.4);
+  --secondary-bg-50: rgba(202, 138, 4, 0.5);
+  --secondary-bg-60: rgba(202, 138, 4, 0.6);
+
+  --danger-bg-10: rgba(220, 38, 38, 0.1);
+  --danger-bg-20: rgba(220, 38, 38, 0.2);
+  --danger-bg-30: rgba(220, 38, 38, 0.3);
+  --danger-bg-40: rgba(220, 38, 38, 0.4);
+  --danger-bg-50: rgba(220, 38, 38, 0.5);
+  --danger-bg-60: rgba(220, 38, 38, 0.6);
+
+  --warning-bg-10: rgba(217, 119, 6, 0.1);
+  --warning-bg-20: rgba(217, 119, 6, 0.2);
+  --warning-bg-30: rgba(217, 119, 6, 0.3);
+  --warning-bg-40: rgba(217, 119, 6, 0.4);
+  --warning-bg-50: rgba(217, 119, 6, 0.5);
+
+  --info-bg-10: rgba(100, 116, 139, 0.1);
+  --info-bg-20: rgba(100, 116, 139, 0.2);
+  --info-bg-30: rgba(100, 116, 139, 0.3);
+  --info-bg-40: rgba(100, 116, 139, 0.4);
+  --info-bg-50: rgba(100, 116, 139, 0.5);
+  --info-bg-60: rgba(100, 116, 139, 0.6);
+  --info-bg-70: rgba(100, 116, 139, 0.7);
+
+  --bg-secondary-60: rgba(13, 7, 7, 0.6);
+
+  --bg-tertiary-20: rgba(45, 20, 20, 0.2);
+  --bg-tertiary-30: rgba(45, 20, 20, 0.3);
+  --bg-tertiary-40: rgba(45, 20, 20, 0.4);
+  --bg-tertiary-50: rgba(45, 20, 20, 0.5);
+  --bg-tertiary-60: rgba(45, 20, 20, 0.6);
+  --bg-tertiary-70: rgba(45, 20, 20, 0.7);
+
+  --bg-overlay-10: rgba(245, 230, 211, 0.05);
+  --bg-overlay-20: rgba(245, 230, 211, 0.08);
+  --bg-overlay-30: rgba(245, 230, 211, 0.1);
+
+  /* Button Text Colors (Murder theme) */
+  --btn-text-light: #f5e6d3;        /* Warm parchment text for solid colored button backgrounds */
+  --btn-text-dark: #0d0707;         /* Dark text (not used in murder theme) */
+  --btn-text-overlay: #f5e6d3;      /* Parchment text for semi-transparent overlays on dark backgrounds */
+}
+
+/* ============================================
    SYSTEM THEME - Follows OS preference
    ============================================ */
 @media (prefers-color-scheme: dark) {

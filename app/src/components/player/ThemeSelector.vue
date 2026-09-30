@@ -50,7 +50,8 @@ const themes = [
   { value: 'grey', label: 'Grey (Default)', icon: 'cloud' },
   { value: 'dark', label: 'Dark Blue', icon: 'moon' },
   { value: 'light', label: 'Light', icon: 'sun' },
-  { value: 'system', label: 'System', icon: 'settings' }
+  { value: 'system', label: 'System', icon: 'settings' },
+  { value: 'murder', label: 'Murder!', icon: 'skull' }
 ]
 
 const selectTheme = (theme) => {

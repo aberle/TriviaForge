@@ -18,11 +18,12 @@ import AppIcon from '@/components/common/AppIcon.vue'
 
 const { currentTheme, setTheme } = useTheme('DISPLAY')
 
-// Cycle through: grey → dark → light → grey
+// Cycle through: grey → dark → light → murder → grey
 const themeConfig = {
   grey: { next: 'dark', icon: 'cloud', label: 'Grey' },
   dark: { next: 'light', icon: 'moon', label: 'Dark' },
-  light: { next: 'grey', icon: 'sun', label: 'Light' },
+  light: { next: 'murder', icon: 'sun', label: 'Light' },
+  murder: { next: 'grey', icon: 'skull', label: 'Murder!' },
   system: { next: 'grey', icon: 'settings', label: 'System' }
 }
 

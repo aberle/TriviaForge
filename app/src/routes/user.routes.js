@@ -64,7 +64,7 @@ router.post('/:userId/reset-password', requireAdmin, asyncHandler(userController
 
 /**
  * Get current user's theme preference
- * GET /api/user/theme
+ * GET /api/users/theme
  *
  * Returns: { theme: string } - Theme name (light/dark/grey/system)
  *
@@ -74,7 +74,7 @@ router.get('/theme', requireAuth, asyncHandler(userController.getTheme));
 
 /**
  * Update current user's theme preference
- * PUT /api/user/theme
+ * PUT /api/users/theme
  *
  * Body: { theme: string } - Theme name (light/dark/grey/system)
  * Returns: { success: true, theme: string }

@@ -26,6 +26,7 @@ const SUITES = [
   { file: 'admin-quiz-management.e2e.js', browser: true },
   { file: 'admin-drag-autoscroll.e2e.js', browser: true },
   { file: 'admin-mobile-layout.e2e.js', browser: true },
+  { file: 'admin-round-reorder.e2e.js', browser: true },
   { file: 'solo-mode.e2e.js', browser: true },
   { file: 'app-name.e2e.js', browser: true },
   { file: 'presenter-display-flow.e2e.js', browser: true },
@@ -41,6 +42,7 @@ const SUITES = [
   { file: 'excel-import.e2e.js', browser: false },
   { file: 'use-rounds-composable.e2e.js', browser: false },
   { file: 'csrf-cookie-security.e2e.js', browser: false },
+  { file: 'theme-selection.e2e.js', browser: true },
 ];
 
 const args = process.argv.slice(2);

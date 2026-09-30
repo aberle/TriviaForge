@@ -14,7 +14,7 @@ import { NotFoundError, BadRequestError, ForbiddenError, ValidationError } from 
 import { USER_ROLES } from '../config/constants.js';
 
 // Valid theme values
-const VALID_THEMES = ['light', 'dark', 'grey', 'system'];
+const VALID_THEMES = ['light', 'dark', 'grey', 'system', 'murder'];
 
 /**
  * List all users (admin only)
@@ -174,13 +174,13 @@ export async function resetPassword(req, res, next) {
 
 /**
  * Get current user's theme preference
- * GET /api/user/theme
+ * GET /api/users/theme
  *
  * Returns the theme preference for the authenticated user
  */
 export async function getTheme(req, res, next) {
   try {
-    const userId = req.user.id;
+    const userId = req.user.user_id;
 
     // Get user's theme preference from database
     const result = await query('SELECT theme FROM users WHERE id = $1', [userId]);
@@ -199,13 +199,13 @@ export async function getTheme(req, res, next) {
 
 /**
  * Update current user's theme preference
- * PUT /api/user/theme
+ * PUT /api/users/theme
  *
  * @param {string} req.body.theme - Theme name (light/dark/grey/system)
  */
 export async function updateTheme(req, res, next) {
   try {
-    const userId = req.user.id;
+    const userId = req.user.user_id;
     const { theme } = req.body;
 
     // Validate theme value
@@ -220,7 +220,11 @@ export async function updateTheme(req, res, next) {
     }
 
     // Update user's theme preference
-    await query('UPDATE users SET theme = $1 WHERE id = $2', [theme, userId]);
+    const result = await query('UPDATE users SET theme = $1 WHERE id = $2 RETURNING id', [theme, userId]);
+
+    if (result.rows.length === 0) {
+      throw new NotFoundError('User');
+    }
 
     console.log(`User ${req.user.username} (ID: ${userId}) updated theme to: ${theme}`);
 

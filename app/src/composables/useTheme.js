@@ -12,7 +12,8 @@ export const THEMES = {
   LIGHT: 'light',
   DARK: 'dark',
   GREY: 'grey',
-  SYSTEM: 'system'
+  SYSTEM: 'system',
+  MURDER: 'murder'
 }
 
 // Default themes per page type
@@ -78,13 +79,14 @@ export function useTheme(pageType = null) {
    * @param {string} theme - Theme name
    */
   const saveThemeToDatabase = async (theme) => {
-    if (!authStore.isAuthenticated || authStore.accountType === 'guest') {
-      // Only save to database for registered users
+    if (!authStore.isLoggedIn) {
+      // Only save to database for logged-in accounts (admin/presenter); a guest player has no
+      // token at all, so isLoggedIn is already false for them -- nothing extra to check there.
       return
     }
 
     try {
-      const response = await fetch('/api/user/theme', {
+      const response = await fetch('/api/users/theme', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -106,12 +108,12 @@ export function useTheme(pageType = null) {
    * @returns {Promise<string|null>} Theme name or null
    */
   const loadThemeFromDatabase = async () => {
-    if (!authStore.isAuthenticated || authStore.accountType === 'guest') {
+    if (!authStore.isLoggedIn) {
       return null
     }
 
     try {
-      const response = await fetch('/api/user/theme', {
+      const response = await fetch('/api/users/theme', {
         headers: {
           'Authorization': `Bearer ${authStore.token}`
         }

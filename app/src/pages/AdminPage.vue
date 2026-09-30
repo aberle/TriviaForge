@@ -54,6 +54,9 @@
           :editingQuestionIdx="editingQuestionIdx"
           :draggedQuestionIdx="draggedQuestionIdx"
           :dragOverTarget="dragOverTarget"
+          :draggedRoundIdx="draggedRoundIdx"
+          :roundDropTargetIdx="roundDropTargetIdx"
+          :roundDropPosition="roundDropPosition"
           :showQuestionModal="showQuestionModal"
           :questionRoundIndex="questionRoundIndex"
           @newQuestion="openNewQuestion"
@@ -63,6 +66,14 @@
           @addRound="addRound"
           @updateRound="updateRound"
           @deleteRound="deleteRound"
+          @moveRoundUp="moveRoundUp"
+          @moveRoundDown="moveRoundDown"
+          @moveRoundToFirst="moveRoundToFirst"
+          @moveRoundToLast="moveRoundToLast"
+          @roundDragStart="handleRoundDragStart"
+          @roundDragOver="handleRoundDragOver"
+          @roundDrop="handleRoundDrop"
+          @roundDragEnd="handleRoundDragEnd"
           @moveQuestionToRound="moveQuestionToRound"
           @editQuestion="editQuestion"
           @moveQuestionUp="moveQuestionUp"
@@ -1342,6 +1353,64 @@ const deleteRound = async (roundIdx) => {
   }
   const questions = currentQuestions.value.map(q => ({ ...q, roundIndex: remap(roundOf(q)) }))
   await saveAndReload(questions, rounds.filter((_, i) => i !== roundIdx), 'Error deleting round')
+}
+
+// Move a round from one position to another (the order buttons, and dropping a dragged round onto
+// another one). Reorders the rounds array itself and remaps every question's roundIndex so each
+// question follows its ORIGINAL round to its new position -- roundIndex is a position pointer, not
+// a stable id, so leaving it untouched would silently reassign questions to the wrong round.
+const moveRound = async (fromIdx, toIdx) => {
+  if (!selectedQuiz.value) return
+  const oldRounds = currentRounds.value
+  if (fromIdx === toIdx || toIdx < 0 || toIdx >= oldRounds.length) return
+  const order = oldRounds.map((_, i) => i)
+  const [moved] = order.splice(fromIdx, 1)
+  order.splice(toIdx, 0, moved)
+  const oldToNew = new Map(order.map((oldIdx, newIdx) => [oldIdx, newIdx]))
+  const rounds = order.map(oldIdx => oldRounds[oldIdx])
+  const questions = currentQuestions.value.map(q => ({ ...q, roundIndex: oldToNew.get(roundOf(q)) }))
+  await saveAndReload(questions, rounds, 'Error reordering rounds')
+}
+
+const moveRoundUp = (roundIdx) => moveRound(roundIdx, roundIdx - 1)
+const moveRoundDown = (roundIdx) => moveRound(roundIdx, roundIdx + 1)
+const moveRoundToFirst = (roundIdx) => moveRound(roundIdx, 0)
+const moveRoundToLast = (roundIdx) => moveRound(roundIdx, currentRounds.value.length - 1)
+
+// Dragging a round by its handle (separate from dragging individual questions above)
+const draggedRoundIdx = ref(null)
+const roundDropTargetIdx = ref(null)
+const roundDropPosition = ref(null) // 'before' or 'after' roundDropTargetIdx's header
+
+const handleRoundDragStart = (roundIdx) => {
+  draggedRoundIdx.value = roundIdx
+}
+
+const handleRoundDragOver = ({ roundIdx, position }) => {
+  if (roundDropTargetIdx.value !== roundIdx) roundDropTargetIdx.value = roundIdx
+  if (roundDropPosition.value !== position) roundDropPosition.value = position
+}
+
+// { roundIdx, position } names a spot relative to a round's header, in terms of the CURRENT (pre-move)
+// array -- convert it to the final index moveRound expects (see its own comment: toIdx is where the
+// moved round ends up in the FINISHED array). Removing the dragged round first shifts every round
+// after it down by one, so a target after the dragged round needs that same adjustment.
+const handleRoundDrop = async (event, { roundIdx, position }) => {
+  event.preventDefault()
+  const from = draggedRoundIdx.value
+  draggedRoundIdx.value = null
+  roundDropTargetIdx.value = null
+  roundDropPosition.value = null
+  if (from === null || roundIdx === from) return
+  const adjustedTarget = roundIdx > from ? roundIdx - 1 : roundIdx
+  const toIdx = position === 'after' ? adjustedTarget + 1 : adjustedTarget
+  await moveRound(from, toIdx)
+}
+
+const handleRoundDragEnd = () => {
+  draggedRoundIdx.value = null
+  roundDropTargetIdx.value = null
+  roundDropPosition.value = null
 }
 
 // Drag-and-drop handlers
