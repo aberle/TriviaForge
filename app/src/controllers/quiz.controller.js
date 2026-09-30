@@ -18,6 +18,7 @@ import {
 import { sendSuccess } from '../utils/responses.js';
 import { validateRounds } from '../utils/validators.js';
 import { ROUND_CONSTRAINTS } from '../config/constants.js';
+import { notifyQuizChanged } from '../services/adminBroadcast.service.js';
 
 // Ensure uploads directory exists on startup
 const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'questions');
@@ -330,6 +331,7 @@ export async function createQuiz(req, res, next) {
     }
 
     await client.query('COMMIT');
+    notifyQuizChanged(quizId);
 
     // Return formatted response
     const filename = `quiz_${quizId}.json`;
@@ -465,6 +467,7 @@ export async function updateQuiz(req, res, next) {
       }
 
       await client.query('COMMIT');
+      notifyQuizChanged(quizId);
 
       // Return the updated quiz
       const updatedQuiz = await client.query('SELECT * FROM quizzes WHERE id = $1', [quizId]);
@@ -573,6 +576,7 @@ export async function updateQuiz(req, res, next) {
     }
 
     await client.query('COMMIT');
+    notifyQuizChanged(quizId);
 
     // Return formatted response
     res.json({
@@ -618,6 +622,7 @@ export async function deleteQuiz(req, res, next) {
       throw new NotFoundError('Quiz');
     }
 
+    notifyQuizChanged(quizId);
     sendSuccess(res, null, 'Quiz deleted successfully');
   } catch (err) {
     next(err);

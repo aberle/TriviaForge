@@ -44,6 +44,7 @@ import { isDisplayNameBanned } from './src/services/player.service.js';
 import { matchShortAnswer } from './src/utils/similarity.js';
 import { gradeAnswer, isAnswerCorrect } from './src/utils/grading.js';
 import { roundService } from './src/services/round.service.js';
+import * as adminBroadcastService from './src/services/adminBroadcast.service.js';
 
 // --------------------
 // Helper: Auto-detect local IP
@@ -974,6 +975,28 @@ const io = new Server(server, {
   pingInterval: 25000    // 25 seconds - standard keepalive interval
 });
 
+// Every socket (guest, player, presenter, admin) connects through here, so this must never reject a
+// connection -- it only tags admin sessions (by the same session-token lookup requireAuth uses for
+// REST) so they can join the 'admins' room below and receive cross-admin notifications like
+// quizChanged. A guest/player token simply won't match an admin account and is silently ignored.
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    if (token) {
+      const result = await pool.query(
+        `SELECT u.account_type FROM user_sessions us
+         JOIN users u ON us.user_id = u.id
+         WHERE us.token = $1 AND us.expires_at > NOW()`,
+        [token]
+      );
+      socket.data.isAdmin = result.rows[0]?.account_type === 'admin';
+    }
+  } catch (err) {
+    console.error('[SOCKET AUTH] Error checking admin session:', err.message);
+  }
+  next();
+});
+
 // --------------------
 // Live Rooms Logic with Session Recording (Phase 3: Using RoomService)
 // --------------------
@@ -1609,6 +1632,10 @@ startBackupScheduler();
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
+
+  if (socket.data.isAdmin) {
+    socket.join('admins');
+  }
 
   // PHASE 2: Extract PlayerID from socket auth
   const playerID = socket.handshake.auth?.playerID;
@@ -4336,6 +4363,7 @@ app.use((req, res, next) => {
   // Initialize auto-mode service
   autoModeService.initialize(io, roomService, pool, quizOptions);
   roundService.initialize(io, roomService, quizOptions, saveSession);
+  adminBroadcastService.initialize(io);
 
   server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 })();

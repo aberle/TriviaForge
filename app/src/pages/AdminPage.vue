@@ -513,6 +513,7 @@ import TwoFactorSetupModal from '@/components/modals/TwoFactorSetupModal.vue'
 import { useApi } from '@/composables/useApi.js'
 import { useAuthStore } from '@/stores/auth.js'
 import { useTheme } from '@/composables/useTheme.js'
+import { useSocket } from '@/composables/useSocket.js'
 
 // Admin Components
 import AdminNavbar from '@/components/admin/AdminNavbar.vue'
@@ -712,6 +713,33 @@ const selectQuiz = async (quiz) => {
     questionRoundIndex.value = Math.min(questionRoundIndex.value, Math.max(0, currentRounds.value.length - 1))
   } catch (err) {
     console.error('Error loading quiz questions:', err)
+  }
+}
+
+// -------------------------------------------------------------------------
+// Live updates: another admin session adding/editing/deleting a question or round (or the quiz
+// itself) shows up here without a manual refresh. The server broadcasts 'quizChanged' to every
+// logged-in admin socket after each quiz mutation (see quiz.controller.js / adminBroadcast.service.js).
+// -------------------------------------------------------------------------
+const pendingQuizRefresh = ref(false) // a refresh arrived while a modal below was open; apply once it closes
+
+const applyPendingQuizRefreshIfAny = async () => {
+  if (!pendingQuizRefresh.value) return
+  pendingQuizRefresh.value = false
+  if (selectedQuiz.value) await selectQuiz(selectedQuiz.value)
+}
+
+const handleQuizChanged = async ({ quizId }) => {
+  await loadQuizzes() // keeps the sidebar's round/question count badges in sync regardless of selection
+  if (selectedQuiz.value?.id !== quizId) return
+  // The question editor and the title/description editor both hold indexes or drafts into the
+  // CURRENT questions/rounds array (editingQuestionIdx, questionRoundIndex, in-progress title text).
+  // Refetching out from under them could point at the wrong question or silently overwrite what the
+  // admin is typing -- defer until whichever is open closes (see the watch below).
+  if (showQuestionModal.value || showEditQuizModal.value) {
+    pendingQuizRefresh.value = true
+  } else {
+    await selectQuiz(selectedQuiz.value)
   }
 }
 
@@ -2266,18 +2294,28 @@ watch(selectedQuiz, (newQuiz) => {
   }
 })
 
+// A refresh deferred by handleQuizChanged (above) is applied as soon as whichever modal was open closes
+watch([showQuestionModal, showEditQuizModal], ([q, e], [prevQ, prevE]) => {
+  if ((prevQ && !q) || (prevE && !e)) applyPendingQuizRefreshIfAny()
+})
+
 // Lifecycle
+const adminSocket = useSocket()
+
 onMounted(() => {
   loadQuizzes()
   document.addEventListener('click', closeMenuIfOutside)
   document.addEventListener('touchstart', closeMenuIfOutside)
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', stopResize)
+  adminSocket.connect()
+  adminSocket.on('quizChanged', handleQuizChanged)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeMenuIfOutside)
   document.removeEventListener('touchstart', closeMenuIfOutside)
+  adminSocket.off('quizChanged', handleQuizChanged)
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', stopResize)
 })
