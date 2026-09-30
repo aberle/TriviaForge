@@ -29,48 +29,49 @@ const tooltipText = computed(() => {
 });
 
 const showDiagnostic = () => {
-  if (!props.wakeLockActive) {
-    const isHttps = window.location.protocol === 'https:';
-    let message = '🌙 Wake Lock Status\n\n';
-    message += 'WHAT IS WAKE LOCK?\n';
-    message += 'Wake lock keeps your screen on during active trivia sessions, preventing it from auto-sleeping mid-game.\n\n';
-    message += '━━━━━━━━━━━━━━━━━━━━\n\n';
+  const isHttps = window.location.protocol === 'https:';
+  let message = (props.wakeLockActive ? '🔆' : '🌙') + ' Wake Lock Status\n\n';
+  message += 'WHAT IS WAKE LOCK?\n';
+  message += 'Wake lock keeps your screen on during active trivia sessions, preventing it from auto-sleeping mid-game.\n\n';
+  message += '━━━━━━━━━━━━━━━━━━━━\n\n';
 
-    if (!props.isSupported) {
-      message += '❌ STATUS: NOT SUPPORTED\n\n';
-      if (!isHttps) {
-        message += 'ISSUE: Wake Lock API requires HTTPS\n\n';
-        message += 'You are currently using HTTP. Modern browsers require a secure connection (HTTPS) for wake lock functionality.\n\n';
-        message += 'SOLUTIONS:\n';
-        message += '• Deploy app with HTTPS (recommended for production)\n';
-        message += '• Use a reverse proxy with SSL certificate\n';
-        message += '• For testing: Use ngrok or similar tunneling service\n\n';
-        message += 'NOTE: The app works perfectly without wake lock - you\'ll just need to manually prevent your screen from sleeping.';
-      } else {
-        message += 'Your browser does not support the Wake Lock API.\n\n';
-        message += 'REQUIREMENTS:\n';
-        message += '• Chrome/Brave 84+ (Desktop & Mobile)\n';
-        message += '• Edge 84+\n';
-        message += '• Safari 16.4+\n\n';
-        message += 'NOTE: Firefox does not currently support Wake Lock.';
-      }
-    } else if (props.error) {
-      message += '❌ STATUS: FAILED TO ACTIVATE\n\n';
-      message += 'Error: ' + props.error + '\n\n';
-      message += 'POSSIBLE CAUSES:\n';
-      if (!isHttps) {
-        message += '• Using HTTP instead of HTTPS (most common)\n';
-      }
-      message += '• Page is hidden/backgrounded when requesting\n';
-      message += '• Browser permission denied\n';
-      message += '• Battery saver mode restricting features';
+  if (props.wakeLockActive) {
+    message += '✅ STATUS: ACTIVE\n\n';
+    message += 'Your screen will stay on while this tab stays open and visible.';
+  } else if (!props.isSupported) {
+    message += '❌ STATUS: NOT SUPPORTED\n\n';
+    if (!isHttps) {
+      message += 'ISSUE: Wake Lock API requires HTTPS\n\n';
+      message += 'You are currently using HTTP. Modern browsers require a secure connection (HTTPS) for wake lock functionality.\n\n';
+      message += 'SOLUTIONS:\n';
+      message += '• Deploy app with HTTPS (recommended for production)\n';
+      message += '• Use a reverse proxy with SSL certificate\n';
+      message += '• For testing: Use ngrok or similar tunneling service\n\n';
+      message += 'NOTE: The app works perfectly without wake lock - you\'ll just need to manually prevent your screen from sleeping.';
     } else {
-      message += '⚠️ STATUS: NOT REQUESTED YET\n\n';
-      message += 'Wake lock will activate automatically when you join a room.';
+      message += 'Your browser does not support the Wake Lock API.\n\n';
+      message += 'REQUIREMENTS:\n';
+      message += '• Chrome/Brave 84+ (Desktop & Mobile)\n';
+      message += '• Edge 84+\n';
+      message += '• Safari 16.4+\n\n';
+      message += 'NOTE: Firefox does not currently support Wake Lock.';
     }
-
-    alert(message);
+  } else if (props.error) {
+    message += '❌ STATUS: FAILED TO ACTIVATE\n\n';
+    message += 'Error: ' + props.error + '\n\n';
+    message += 'POSSIBLE CAUSES:\n';
+    if (!isHttps) {
+      message += '• Using HTTP instead of HTTPS (most common)\n';
+    }
+    message += '• Page is hidden/backgrounded when requesting\n';
+    message += '• Browser permission denied\n';
+    message += '• Battery saver mode restricting features';
+  } else {
+    message += '⚠️ STATUS: NOT REQUESTED YET\n\n';
+    message += 'Wake lock will activate automatically when you join a room.';
   }
+
+  alert(message);
 };
 </script>
 

@@ -41,3 +41,15 @@ variable "timezone" {
   type    = string
   default = "America/Denver"
 }
+
+variable "guest_only_mode" {
+  description = "Sets GUEST_ONLY_MODE in the deployed app's .env -- players only pick a display name, no accounts."
+  type        = bool
+  default     = true
+}
+
+variable "app_name" {
+  description = "Sets APP_NAME in the deployed app's .env -- replaces \"TriviaForge\" throughout the UI."
+  type        = string
+  default     = "Geeks Who Stink"
+}

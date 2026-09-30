@@ -17,7 +17,7 @@ chmod +x /usr/libexec/docker/cli-plugins/docker-compose
 # buildx's release assets embed the version in the filename (no fixed-name "latest" asset like
 # compose has above), so resolve the actual latest tag from the redirect first.
 BUILDX_VERSION=$(curl -sI https://github.com/docker/buildx/releases/latest | grep -i '^location:' | sed -E 's#.*/tag/(v[0-9.]+).*#\1#' | tr -d '\r')
-curl -SL "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64" \
+curl -SL "https://github.com/docker/buildx/releases/download/$${BUILDX_VERSION}/buildx-$${BUILDX_VERSION}.linux-amd64" \
   -o /usr/libexec/docker/cli-plugins/docker-buildx
 chmod +x /usr/libexec/docker/cli-plugins/docker-buildx
 
@@ -47,8 +47,8 @@ CSRF_SECRET=${csrf_secret}
 DB_PASSWORD=${db_password}
 TZ=${timezone}
 DOMAIN_NAME=${domain_name}
-GUEST_ONLY_MODE=true
-APP_NAME=Geeks Who Stink
+GUEST_ONLY_MODE=${guest_only_mode}
+APP_NAME=${app_name}
 ENVEOF
 chmod 600 .env
 

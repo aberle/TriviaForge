@@ -38,6 +38,8 @@ resource "aws_instance" "app" {
     csrf_secret     = random_password.csrf_secret.result
     db_password     = random_password.db_password.result
     timezone        = var.timezone
+    guest_only_mode = var.guest_only_mode
+    app_name        = var.app_name
   })
   user_data_replace_on_change = false
 
