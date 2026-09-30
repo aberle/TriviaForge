@@ -743,6 +743,23 @@ const handleQuizChanged = async ({ quizId }) => {
   }
 }
 
+// A dropped/suspended connection (the socket disconnecting -- e.g. the phone was locked for a while
+// -- or the tab simply being backgrounded) means any 'quizChanged' broadcast sent in the meantime was
+// missed outright; socket.io does not replay missed events on reconnect. Treat regaining a live
+// connection, or the tab becoming visible again, as "you may be stale" and resync through the exact
+// same modal-aware path a real notification would use, rather than requiring a manual page reload.
+const resyncAfterReconnect = () => {
+  if (selectedQuiz.value) {
+    handleQuizChanged({ quizId: selectedQuiz.value.id })
+  } else {
+    loadQuizzes()
+  }
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'visible') resyncAfterReconnect()
+}
+
 // Which round a question belongs to. A quiz without rounds is treated as a single round.
 const roundOf = (question) => (currentRounds.value.length ? (question.roundIndex ?? 0) : 0)
 
@@ -2310,12 +2327,16 @@ onMounted(() => {
   document.addEventListener('mouseup', stopResize)
   adminSocket.connect()
   adminSocket.on('quizChanged', handleQuizChanged)
+  adminSocket.on('connect', resyncAfterReconnect)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeMenuIfOutside)
   document.removeEventListener('touchstart', closeMenuIfOutside)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   adminSocket.off('quizChanged', handleQuizChanged)
+  adminSocket.off('connect', resyncAfterReconnect)
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', stopResize)
 })

@@ -29,6 +29,7 @@ const SUITES = [
   { file: 'admin-round-reorder.e2e.js', browser: true },
   { file: 'wake-lock-indicator.e2e.js', browser: true },
   { file: 'admin-live-quiz-updates.e2e.js', browser: true },
+  { file: 'admin-reconnect-resync.e2e.js', browser: true },
   { file: 'solo-mode.e2e.js', browser: true },
   { file: 'app-name.e2e.js', browser: true },
   { file: 'presenter-display-flow.e2e.js', browser: true },

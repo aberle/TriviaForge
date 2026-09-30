@@ -142,6 +142,12 @@
             <button @click.stop="$emit('deleteQuestion', item.idx)" class="btn-delete" title="Delete"><AppIcon name="trash-2" size="sm" /></button>
           </div>
         </div>
+        <!-- A dedicated New Question button inside each expanded round, right where an admin scrolled
+             down into a round is actually looking -- the "+ Add Round" button further down the page was
+             getting misclicked for this, since it used to be the only button anywhere near there. -->
+        <button type="button" class="btn-new-question-round" @click="$emit('newQuestion', group.roundIdx)">
+          <AppIcon name="plus" size="sm" /> New Question
+        </button>
         </div>
         <!-- Every round has a drop zone at its end (the only target in an empty round). It is always in the
              layout and only fades in while dragging a QUESTION: adding elements when a drag starts moves
@@ -893,6 +899,30 @@ h2 {
 
 .btn-add-round:hover {
   background: var(--info-bg-40);
+}
+
+/* A SOLID border, unlike "+ Add Round"'s dashed one, so the two are never visually confused even
+   though a round's end sits right above the dashed "+ Add Round" button further down the page. */
+.btn-new-question-round {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  background: var(--info-bg-20);
+  border: 1px solid var(--info-light);
+  border-radius: 8px;
+  color: var(--info-light);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-new-question-round:hover {
+  background: var(--info-bg-30, var(--info-bg-20));
+  color: var(--text-primary);
 }
 
 @media (max-width: 1024px) {

@@ -106,7 +106,16 @@ await runSuite(
       'but if a DIFFERENT round is explicitly expanded, New Question prefers that one over last-used',
       (await admin.eval(`document.querySelector('#questionRound').value`)) === '0'
     );
-    // Left open (on Round A's blank form) for the next section, same as the original flow left it open
+    await admin.clickText('Cancel', '.question-editor-buttons button');
+    await sleep(300);
+
+    section('A dedicated "New Question" button also sits at the bottom of each expanded round');
+    // Round A is still the one expanded (from the section above)
+    ok('it appears at the bottom of the expanded round', (await admin.count('.btn-new-question-round')) === 1);
+    await admin.eval(`document.querySelector('.btn-new-question-round').click(); true`);
+    await admin.waitFor(`!!document.querySelector('#questionRound')`);
+    ok('clicking it opens New Question preselected to THAT round (Round A), just like the top button would', (await admin.eval(`document.querySelector('#questionRound').value`)) === '0');
+    // Left open (on Round A's blank form) for the next section
 
     section('Switching question type resets choices instead of keeping leftovers');
     const choiceValues = () => admin.eval(`[...document.querySelectorAll('.choice-input-wrapper input')].map(i => i.value)`);
