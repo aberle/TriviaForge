@@ -1,0 +1,14 @@
+# Caddy gets a cert from Let's Encrypt automatically for {$DOMAIN_NAME} the first time it starts (it
+# needs port 80 reachable from the internet for the HTTP-01 challenge -- already open in the
+# security group). reverse_proxy passes WebSocket upgrade requests (Socket.IO) through untouched, and
+# sets X-Forwarded-Proto: https, which is what makes the CSRF cookie's Secure flag come out correctly
+# (see app/server.js's `req.secure` / `trust proxy` handling).
+{$DOMAIN_NAME} {
+	reverse_proxy app:3000
+}
+
+# www redirects to the apex rather than serving the app under a second origin: SERVER_URL/QR codes
+# always point at the apex, and the CSRF cookie isn't scoped to share across the two hostnames.
+www.{$DOMAIN_NAME} {
+	redir https://{$DOMAIN_NAME}{uri} permanent
+}

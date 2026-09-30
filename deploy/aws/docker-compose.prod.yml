@@ -1,0 +1,39 @@
+# Production overlay: `docker compose -f docker-compose.yml -f deploy/aws/docker-compose.prod.yml up -d --build`
+# (this is what user_data.sh.tpl runs on first boot; see deploy/aws/redeploy.sh for later updates).
+#
+# - Postgres and the app itself are no longer published to the host at all -- only Caddy's 80/443
+#   are reachable from outside, and it reaches `app` over the compose network by container name.
+# - The DB password moves from the hardcoded "trivia" in docker-compose.yml to a real generated one.
+# - Caddy gets automatic HTTPS (Let's Encrypt) and transparent WebSocket passthrough for Socket.IO,
+#   with no extra config beyond the one reverse_proxy line in ./Caddyfile.
+services:
+  db:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+  app:
+    ports: !reset []
+    environment:
+      DATABASE_URL: postgres://trivia:${DB_PASSWORD}@db:5432/trivia
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: triviagame-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME}
+    volumes:
+      - ./deploy/aws/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

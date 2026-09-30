@@ -72,3 +72,13 @@ graphify-out/
 
 # Local MCP server config
 .mcp.json
+
+# Terraform state and cache (state contains generated secrets in plaintext -- see
+# deploy/aws/README.md). .terraform.lock.hcl is NOT ignored -- Terraform's own convention is to
+# commit it, so `terraform init` always picks the same provider versions.
+deploy/aws/terraform/.terraform/
+deploy/aws/terraform/*.tfstate
+deploy/aws/terraform/*.tfstate.*
+deploy/aws/terraform/*.tfplan
+deploy/aws/terraform/tfplan
+deploy/aws/terraform/terraform.tfvars
