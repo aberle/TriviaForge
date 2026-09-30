@@ -3,7 +3,7 @@
  * player on a phone, bots for the other players, and the display page.
  */
 
-import { runSuite, Q, BASE, pick, submitAnswers, sleep } from './lib/harness.js';
+import { runSuite, Q, BASE, pick, submitAnswers, sleep, getRoomCode } from './lib/harness.js';
 
 const TITLE = `Presenting ${Date.now().toString(36)}`;
 
@@ -31,7 +31,7 @@ await runSuite(
     await sleep(200);
     await presenter.clickText('Make Live');
     await presenter.waitText('0 of 2 rounds played');
-    const room = await presenter.eval(`(([...document.querySelectorAll('*')].find(e => e.children.length < 4 && e.innerText?.includes('TriviaForge Presenter') && /\\d{4}/.test(e.innerText)) || {}).innerText || '').match(/\\d{4}/)?.[0]`);
+    const room = await getRoomCode(presenter);
     ok('the room is created and the round controls replace the question list', /^\d{4}$/.test(room) && (await presenter.has('Warmup')) && !(await presenter.has('Auto-Pilot')), String(room));
     ok('there is no per-room guest-only option (guest-only is a server setting)', !(await presenter.visible('.guest-only-option')));
 

@@ -4,7 +4,7 @@
  * results appear, and the Progress button shows each player's answers and the correct ones.
  */
 
-import { runSuite, Q, BASE, pick, submitAnswers, sleep } from './lib/harness.js';
+import { runSuite, Q, BASE, pick, submitAnswers, sleep, getRoomCode } from './lib/harness.js';
 
 const TITLE = `Hidden ${Date.now().toString(36)}`;
 
@@ -40,7 +40,7 @@ await runSuite(
     await presenter.clickText('Make Live');
     await presenter.waitText('0 of 2 rounds played');
     ok('the room shows that standings are hidden until the end', await presenter.has('Standings hidden until the end'));
-    const room = await presenter.eval(`(([...document.querySelectorAll('*')].find(e => e.children.length < 4 && e.innerText?.includes('TriviaForge Presenter') && /\\d{4}/.test(e.innerText)) || {}).innerText || '').match(/\\d{4}/)?.[0]`);
+    const room = await getRoomCode(presenter);
 
     const display = await env.open(`${BASE}/display?room=${room}`, { width: 1600, height: 900 });
     await display.waitText('Connected to room');

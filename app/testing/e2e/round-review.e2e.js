@@ -5,7 +5,7 @@
  * appears, even when there is nothing to check.
  */
 
-import { runSuite, Q, BASE, pick, submitAnswers, sleep } from './lib/harness.js';
+import { runSuite, Q, BASE, pick, submitAnswers, sleep, getRoomCode } from './lib/harness.js';
 
 const TITLE = `Reviewing ${Date.now().toString(36)}`;
 
@@ -31,7 +31,7 @@ await runSuite(
     await sleep(200);
     await presenter.clickText('Make Live');
     await presenter.waitText('0 of 2 rounds played');
-    const room = await presenter.eval(`(([...document.querySelectorAll('*')].find(e => e.children.length < 4 && e.innerText?.includes('TriviaForge Presenter') && /\\d{4}/.test(e.innerText)) || {}).innerText || '').match(/\\d{4}/)?.[0]`);
+    const room = await getRoomCode(presenter);
     const ann = await env.player('Ann', { room });
     const bob = env.bot();
     const cy = env.bot();

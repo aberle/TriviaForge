@@ -242,7 +242,21 @@ async function setup({ quiz, chrome: wantChrome }) {
 
     /** A tab signed in as the admin (for the admin and presenter pages). */
     async adminPage(path = '/admin', viewport = {}) {
-      const page = await env.open(`${BASE}/login`, { width: 1500, height: 950, ...viewport });
+      // The login page is registered at '/' (there is no '/login' route -- router.js), but this only
+      // ever uses this tab to stash a token into localStorage before jumping to the real target path,
+      // so which page (if any) actually renders here has never mattered.
+      const page = await env.open(`${BASE}/`, { width: 1500, height: 950, ...viewport });
+      // Page.open() doesn't wait for the navigation it kicks off to finish (unlike goto(), which has
+      // a fixed sleep for exactly this). Touching localStorage while the tab is still on the
+      // transient pre-navigation document (still "about:blank" under the hood) throws a
+      // SecurityError -- invisible against localhost (load is near-instant) but a real, reproducible
+      // race against an actual remote server with real network latency (found deploying to a live
+      // domain for the first time). readyState is NOT a usable signal here: the transient document
+      // reports 'complete' immediately too (an empty document finishes "loading" trivially fast).
+      // The transient document's URL is always the literal "about:blank", though, so waiting for the
+      // URL to actually become the target's is a reliable, route-independent signal that the real
+      // navigation has committed.
+      await page.waitFor(`document.URL.startsWith(${JSON.stringify(BASE)})`);
       await page.eval(`localStorage.setItem('authToken', ${JSON.stringify(admin.token)}); localStorage.setItem('username', 'admin'); localStorage.setItem('userRole', 'admin'); localStorage.setItem('userId', String(${admin.user.id || 1})); localStorage.setItem('isRootAdmin', 'true'); true`);
       await page.goto(`${BASE}${path}`);
       return page;
@@ -271,7 +285,42 @@ async function setup({ quiz, chrome: wantChrome }) {
     async cleanup() {
       for (const room of rooms) env.presenter?.emit('closeRoom', { roomCode: room, userId: admin.user.id || 1, isRootAdmin: true });
       await sleep(300);
+
+      // deleteQuiz only ever soft-deletes (is_active=false): the quiz row, its quiz_questions links
+      // and its questions all stay in the database forever, permanently counted as "in use" by the
+      // question bank (found the hard way -- this quietly filled a real deployment's bank with dozens
+      // of leftover test questions and made the bank's own duplicate-question check misfire on a real
+      // upload). Clean up properly instead, through the app's own real deletion endpoints:
+      //   1. A played room auto-saves a session; session_questions has a RESTRICT foreign key
+      //      specifically to protect real game history, which blocks hard-deleting a question until
+      //      its session is gone. Delete any session tied to one of this suite's own quizzes first.
+      //   2. Hard-delete every question the suite's quizzes contained (cascades their quiz_questions
+      //      rows too). This targets exactly the question ids this suite's own quizzes ended up with,
+      //      not "every question with matching text", so it can't touch anything a real user created.
+      //   3. Soft-delete the quiz as before -- there is no hard-delete-quiz endpoint, so the empty,
+      //      already-inactive quiz shell is the one bit of debris this can't remove.
+      if (quizIds.length) {
+        try {
+          const sessions = await (await admin.request('GET', '/api/sessions')).json();
+          for (const s of sessions) {
+            if (quizIds.includes(s.quizId)) await admin.request('DELETE', `/api/sessions/${s.filename}`).catch(() => {});
+          }
+        } catch {
+          // best effort -- a suite that never played a room has nothing to find here anyway
+        }
+        for (const id of quizIds) {
+          try {
+            const quiz = await env.getQuiz(id);
+            for (const q of quiz.questions || []) {
+              if (q.id) await admin.request('DELETE', `/api/questions/${q.id}?confirm=true`).catch(() => {});
+            }
+          } catch {
+            // quiz may already be gone
+          }
+        }
+      }
       for (const id of quizIds) await env.deleteQuiz(id).catch(() => {});
+
       sockets.forEach((s) => s.close());
       pages.forEach((p) => p.disconnect());
       browser?.close();
@@ -321,6 +370,17 @@ export async function expandRound(page, roundIdx, questionCount) {
     await page.waitFor(`document.querySelectorAll('.question-item').length === ${questionCount}`, { timeout: 8000 });
   }
   await sleep(250);
+}
+
+/**
+ * The current room code shown in the presenter's navbar, once a room is live. Reads the dedicated
+ * `.navbar-room-code` element rather than scanning for text containing the brand name ("TriviaForge
+ * Presenter") -- that used to work only because the brand name was hardcoded; now that APP_NAME is
+ * configurable (a production deploy can set it to anything), searching for the literal brand string
+ * finds nothing there and silently produces an undefined room code.
+ */
+export async function getRoomCode(page) {
+  return page.eval(`document.querySelector('.navbar-room-code')?.innerText.trim()`);
 }
 
 /** Pick a choice by its text inside the question card at `cardIndex`. */

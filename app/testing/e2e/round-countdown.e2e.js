@@ -4,7 +4,7 @@
  * cancelled, survives a player's refresh, and timed rounds don't offer it.
  */
 
-import { runSuite, Q, BASE, pick, sleep } from './lib/harness.js';
+import { runSuite, Q, BASE, pick, sleep, getRoomCode } from './lib/harness.js';
 
 const TITLE = `Countdown ${Date.now().toString(36)}`;
 
@@ -30,7 +30,7 @@ await runSuite(
     await sleep(200);
     await presenter.clickText('Make Live');
     await presenter.waitText('0 of 2 rounds played');
-    const room = await presenter.eval(`(([...document.querySelectorAll('*')].find(e => e.children.length < 4 && e.innerText?.includes('TriviaForge Presenter') && /\\d{4}/.test(e.innerText)) || {}).innerText || '').match(/\\d{4}/)?.[0]`);
+    const room = await getRoomCode(presenter);
     const display = await env.open(`${BASE}/display?room=${room}`, { width: 1600, height: 900 });
     await display.waitText('Connected to room');
     const ann = await env.player('Ann', { room, height: 480 }); // a short screen, so the round has to be scrolled

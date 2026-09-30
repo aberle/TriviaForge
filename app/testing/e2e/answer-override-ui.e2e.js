@@ -4,7 +4,7 @@
  * changed, and a round they are in the middle of is not disturbed.
  */
 
-import { runSuite, Q, BASE, pick, submitAnswers, sleep } from './lib/harness.js';
+import { runSuite, Q, BASE, pick, submitAnswers, sleep, getRoomCode } from './lib/harness.js';
 
 const TITLE = `Recount ${Date.now().toString(36)}`;
 
@@ -29,7 +29,7 @@ await runSuite(
     await sleep(200);
     await presenter.clickText('Make Live');
     await presenter.waitText('0 of 2 rounds played');
-    const room = await presenter.eval(`(([...document.querySelectorAll('*')].find(e => e.children.length < 4 && e.innerText?.includes('TriviaForge Presenter') && /\\d{4}/.test(e.innerText)) || {}).innerText || '').match(/\\d{4}/)?.[0]`);
+    const room = await getRoomCode(presenter);
     const ann = await env.player('Ann', { room });
     const bob = env.bot();
     bob.emit('joinRoom', { roomCode: room, username: 'bob_ui', displayName: 'Bob', playerID: bob.playerID });
