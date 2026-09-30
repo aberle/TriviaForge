@@ -31,6 +31,7 @@ import exportRoutes from './src/routes/export.routes.js';
 import { requireAuth, requireAdmin } from './src/middleware/auth.js';
 import { errorHandler, notFoundHandler } from './src/middleware/errorHandler.js';
 import { env } from './src/config/environment.js';
+import { VALID_THEMES } from './src/config/constants.js';
 
 // Import services (Phase 3: Service Layer)
 import { roomService } from './src/services/room.service.js';
@@ -370,7 +371,7 @@ const broadcastQuizResults = (roomCode, room) => {
 
 // Public, non-sensitive server settings the UI needs before anyone logs in
 app.get('/api/config', (req, res) => {
-  res.json({ guestOnly: env.guestOnly, soloMode: env.soloMode, appName: env.appName });
+  res.json({ guestOnly: env.guestOnly, soloMode: env.soloMode, appName: env.appName, defaultTheme: quizOptions.defaultPlayerTheme });
 });
 
 // CSRF token endpoint - GET is excluded from CSRF protection
@@ -587,13 +588,13 @@ app.get('/api/options', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT setting_key, setting_value FROM app_settings
-       WHERE setting_key IN ('answer_display_time', 'default_question_timer', 'default_reveal_delay', 'server_url', 'short_answer_match_threshold')`
+       WHERE setting_key IN ('answer_display_time', 'default_question_timer', 'default_reveal_delay', 'server_url', 'short_answer_match_threshold', 'default_player_theme')`
     );
 
     // Build options object from results
     const settings = {};
     for (const row of result.rows) {
-      if (row.setting_key === 'server_url') {
+      if (row.setting_key === 'server_url' || row.setting_key === 'default_player_theme') {
         settings[row.setting_key] = row.setting_value;
       } else if (row.setting_key === 'short_answer_match_threshold') {
         settings[row.setting_key] = parseFloat(row.setting_value);
@@ -608,19 +609,20 @@ app.get('/api/options', requireAdmin, async (req, res) => {
       defaultRevealDelay: settings.default_reveal_delay || 5,
       serverUrl: settings.server_url || '',
       shortAnswerMatchThreshold: settings.short_answer_match_threshold ?? 0.85,
+      defaultPlayerTheme: settings.default_player_theme || 'grey',
       detectedIp: LOCAL_IP,
       activeServerUrl: getServerUrl(),
     });
   } catch (err) {
     console.error('Error fetching options:', err);
-    res.json({ answerDisplayTime: 30, defaultQuestionTimer: 30, defaultRevealDelay: 5, shortAnswerMatchThreshold: 0.85 }); // Return defaults on error
+    res.json({ answerDisplayTime: 30, defaultQuestionTimer: 30, defaultRevealDelay: 5, shortAnswerMatchThreshold: 0.85, defaultPlayerTheme: 'grey' }); // Return defaults on error
   }
 });
 
 // Save quiz options (to database) - v5.4.0: includes auto-mode timer defaults
 app.post('/api/options', requireAdmin, async (req, res) => {
   try {
-    const { answerDisplayTime, defaultQuestionTimer, defaultRevealDelay, serverUrl, shortAnswerMatchThreshold } = req.body;
+    const { answerDisplayTime, defaultQuestionTimer, defaultRevealDelay, serverUrl, shortAnswerMatchThreshold, defaultPlayerTheme } = req.body;
 
     // Validate input
     if (answerDisplayTime !== undefined && (answerDisplayTime < 5 || answerDisplayTime > 300)) {
@@ -642,6 +644,9 @@ app.post('/api/options', requireAdmin, async (req, res) => {
         return res.status(400).json({ error: 'Server URL must be a valid URL (e.g. http://192.168.1.50:3000)' });
       }
     }
+    if (defaultPlayerTheme !== undefined && !VALID_THEMES.includes(defaultPlayerTheme)) {
+      return res.status(400).json({ error: `Default player theme must be one of: ${VALID_THEMES.join(', ')}` });
+    }
 
     // Update settings
     const settingsToUpdate = [];
@@ -659,6 +664,9 @@ app.post('/api/options', requireAdmin, async (req, res) => {
     }
     if (shortAnswerMatchThreshold !== undefined) {
       settingsToUpdate.push({ key: 'short_answer_match_threshold', value: shortAnswerMatchThreshold, desc: 'Minimum similarity (0-1) for auto-grading open-ended answers' });
+    }
+    if (defaultPlayerTheme !== undefined) {
+      settingsToUpdate.push({ key: 'default_player_theme', value: defaultPlayerTheme, desc: 'Default theme for player/display clients with no personal preference saved yet' });
     }
 
     for (const setting of settingsToUpdate) {
@@ -970,7 +978,7 @@ const io = new Server(server, {
 // Live Rooms Logic with Session Recording (Phase 3: Using RoomService)
 // --------------------
 // REMOVED: const liveRooms = {}; - Now using roomService.liveRooms
-let quizOptions = { answerDisplayTime: 30, serverUrl: '', shortAnswerMatchThreshold: 0.85 }; // Default options
+let quizOptions = { answerDisplayTime: 30, serverUrl: '', shortAnswerMatchThreshold: 0.85, defaultPlayerTheme: 'grey' }; // Default options
 
 // Periodic Auto-Save Configuration (Phase 3: Using SessionService)
 // REMOVED: const AUTO_SAVE_INTERVAL = 120000; - Now in sessionService
@@ -990,7 +998,7 @@ function stopAutoSave(roomCode) {
 async function loadQuizOptions() {
   try {
     const result = await pool.query(
-      "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('answer_display_time', 'server_url', 'short_answer_match_threshold')"
+      "SELECT setting_key, setting_value FROM app_settings WHERE setting_key IN ('answer_display_time', 'server_url', 'short_answer_match_threshold', 'default_player_theme')"
     );
 
     if (result.rows.length > 0) {
@@ -1001,6 +1009,8 @@ async function loadQuizOptions() {
           quizOptions.serverUrl = row.setting_value || '';
         } else if (row.setting_key === 'short_answer_match_threshold') {
           quizOptions.shortAnswerMatchThreshold = parseFloat(row.setting_value);
+        } else if (row.setting_key === 'default_player_theme') {
+          quizOptions.defaultPlayerTheme = row.setting_value || 'grey';
         }
       }
       console.log('📋 Quiz options loaded from database:', quizOptions);

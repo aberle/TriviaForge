@@ -131,6 +131,27 @@ export function useTheme(pageType = null) {
   }
 
   /**
+   * The admin's site-wide default theme for player/display clients (app_settings.default_player_theme,
+   * via the public /api/config endpoint -- guests have no account to read a personal preference from).
+   * Only ever consulted for PLAYER/DISPLAY pages, and only once neither a saved account preference nor
+   * a localStorage one exists -- see initTheme().
+   * @returns {Promise<string|null>}
+   */
+  const loadDefaultPlayerTheme = async () => {
+    try {
+      const response = await fetch('/api/config')
+      if (response.ok) {
+        const data = await response.json()
+        return data.defaultTheme || null
+      }
+    } catch (error) {
+      console.warn('[THEME] Error loading the site-wide default player theme:', error)
+    }
+
+    return null
+  }
+
+  /**
    * Set theme and persist to storage/database
    * @param {string} theme - Theme name (light/dark/grey/system)
    */
@@ -147,7 +168,8 @@ export function useTheme(pageType = null) {
 
   /**
    * Initialize theme on mount
-   * Priority: Database (registered users) > localStorage > Page default > Dark
+   * Priority: Database (registered users) > localStorage > admin's site-wide default (player/display
+   * only) > Page default > Dark
    */
   const initTheme = async () => {
     if (isThemeLoaded.value) {
@@ -166,12 +188,19 @@ export function useTheme(pageType = null) {
       theme = getStoredTheme()
     }
 
-    // 3. Fall back to page-specific default
+    // 3. Fall back to the admin's site-wide default for player/display clients (a guest, or a
+    // registered player/display who has never picked a theme of their own) -- never for
+    // admin/presenter/login, which keep their own hardcoded default regardless of this setting.
+    if (!theme && (pageType === 'PLAYER' || pageType === 'DISPLAY')) {
+      theme = await loadDefaultPlayerTheme()
+    }
+
+    // 4. Fall back to page-specific default
     if (!theme && pageType && PAGE_THEMES[pageType]) {
       theme = PAGE_THEMES[pageType]
     }
 
-    // 4. Final fallback to dark theme
+    // 5. Final fallback to dark theme
     if (!theme) {
       theme = THEMES.DARK
     }

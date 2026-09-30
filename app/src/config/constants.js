@@ -23,6 +23,12 @@ export const ACCOUNT_TYPES = {
 };
 
 // ============================================================================
+// THEMES
+// ============================================================================
+
+export const VALID_THEMES = ['light', 'dark', 'grey', 'system', 'murder'];
+
+// ============================================================================
 // ROOM & SESSION STATES
 // ============================================================================
 
@@ -452,6 +458,7 @@ export const ENV_VARS = {
 export default {
   USER_ROLES,
   ACCOUNT_TYPES,
+  VALID_THEMES,
   ROOM_STATES,
   SESSION_STATES,
   CONNECTION_STATES,

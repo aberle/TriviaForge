@@ -116,6 +116,30 @@
         {{ saveMessage }}
       </div>
     </div>
+
+    <hr class="settings-divider" />
+
+    <div class="default-theme-settings">
+      <h4>Default Theme for Player Clients</h4>
+      <p class="theme-info-text">
+        Sets the theme guests and players see the first time they join, before they've picked one of
+        their own. Doesn't change anything for someone who already has a saved theme (in their browser
+        or on their account).
+      </p>
+      <div class="default-theme-row">
+        <select v-model="defaultPlayerTheme" class="default-theme-select" aria-label="Default theme for player clients">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="grey">Grey</option>
+          <option value="murder">Murder!</option>
+          <option value="system">System (follows device)</option>
+        </select>
+        <Button variant="success" @click="saveDefaultPlayerTheme">Save</Button>
+      </div>
+      <div v-if="defaultThemeSaveMessage" class="save-message" :class="'message-' + defaultThemeSaveMessageType">
+        {{ defaultThemeSaveMessage }}
+      </div>
+    </div>
   </section>
 </template>
 
@@ -123,11 +147,42 @@
 import { ref, onMounted } from 'vue'
 import { useTheme } from '../../composables/useTheme'
 import AppIcon from '@/components/common/AppIcon.vue'
+import Button from '@/components/common/Button.vue'
+import { useApi } from '@/composables/useApi.js'
 
 const { currentTheme, setTheme } = useTheme('ADMIN')
+const { get, post } = useApi()
 
 const saveMessage = ref('')
 const saveMessageType = ref('success')
+
+const defaultPlayerTheme = ref('grey')
+const defaultThemeSaveMessage = ref('')
+const defaultThemeSaveMessageType = ref('success')
+
+async function fetchDefaultPlayerTheme() {
+  try {
+    const response = await get('/api/options')
+    defaultPlayerTheme.value = response.data.defaultPlayerTheme || 'grey'
+  } catch (error) {
+    console.error('Error fetching the default player theme:', error)
+  }
+}
+
+async function saveDefaultPlayerTheme() {
+  try {
+    await post('/api/options', { defaultPlayerTheme: defaultPlayerTheme.value })
+    defaultThemeSaveMessage.value = 'Default player theme saved'
+    defaultThemeSaveMessageType.value = 'success'
+  } catch (error) {
+    console.error('Error saving the default player theme:', error)
+    defaultThemeSaveMessage.value = error.response?.data?.error || 'Failed to save default player theme'
+    defaultThemeSaveMessageType.value = 'error'
+  }
+  setTimeout(() => {
+    defaultThemeSaveMessage.value = ''
+  }, 3000)
+}
 
 const selectTheme = async (theme) => {
   try {
@@ -154,6 +209,7 @@ const selectTheme = async (theme) => {
 
 onMounted(() => {
   // Theme is already initialized by useTheme composable
+  fetchDefaultPlayerTheme()
 })
 </script>
 
@@ -379,6 +435,42 @@ h3 {
 .theme-description {
   color: var(--text-tertiary);
   font-size: 0.85rem;
+}
+
+.settings-divider {
+  margin: 2rem 0;
+  border: none;
+  border-top: 1px solid var(--border-color);
+}
+
+.default-theme-settings h4 {
+  margin: 0 0 0.5rem 0;
+  color: var(--info-light);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.theme-info-text {
+  margin: 0 0 1rem 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.default-theme-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.default-theme-select {
+  flex: 1;
+  max-width: 20rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-overlay-20);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
 }
 
 /* Save Message */

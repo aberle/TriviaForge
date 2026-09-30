@@ -3,7 +3,7 @@
     <div class="questions-list-header">
       <h2>Questions<span v-if="selectedQuiz" class="questions-list-quiz"> &mdash; {{ selectedQuiz.title }}</span></h2>
       <div v-if="selectedQuiz" class="shuffle-controls">
-        <button @click="$emit('newQuestion')" class="btn-new-question" title="Add a question to this quiz">+ New Question</button>
+        <button @click="$emit('newQuestion', expandedRoundIdx)" class="btn-new-question" title="Add a question to this quiz">+ New Question</button>
         <button v-if="!hasRounds" @click="$emit('enableRounds')" class="btn-shuffle" title="Split this quiz into rounds"><AppIcon name="layers" size="md" /></button>
         <button @click="$emit('shuffleQuestions')" class="btn-shuffle" :title="hasRounds ? 'Shuffle Questions Within Each Round' : 'Shuffle Questions'"><AppIcon name="shuffle" size="md" /></button>
         <button @click="$emit('shuffleAllChoices')" class="btn-shuffle" title="Shuffle All Choices"><AppIcon name="dices" size="md" /></button>
@@ -898,6 +898,18 @@ h2 {
 @media (max-width: 1024px) {
   .questions-sidebar {
     border-top: 1px solid var(--border-color);
+  }
+}
+
+@media (max-width: 768px) {
+  /* The quiz's full name is already shown (and already truncates there) in the mobile drawer toggle
+     button right above this panel -- repeating it here, squeezed next to "+ New Question" and the
+     shuffle buttons, left it wrapping across many short lines instead (h2's default min-width:auto
+     lets its text wrap rather than shrink). Simplest fix: it's redundant on mobile, so drop it and
+     just keep the bare "Questions" heading, which always fits on one line regardless of the name.
+     Desktop, with room to spare, is unaffected. */
+  .questions-list-quiz {
+    display: none;
   }
 }
 </style>

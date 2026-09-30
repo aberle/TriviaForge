@@ -1003,9 +1003,13 @@ const lastUsedRound = (quiz) => {
   return Number.isInteger(idx) ? idx : 0
 }
 
-const openNewQuestion = () => {
+// expandedRoundIdx: the round QuestionsList currently has expanded (null if none) -- if the admin is
+// focused on a round, a new question should default into THAT round rather than whichever was last
+// used, which could be a different one they're no longer looking at.
+const openNewQuestion = (expandedRoundIdx = null) => {
   clearQuestionForm()
-  questionRoundIndex.value = Math.min(lastUsedRound(selectedQuiz.value), Math.max(0, currentRounds.value.length - 1))
+  const preferred = expandedRoundIdx !== null ? expandedRoundIdx : lastUsedRound(selectedQuiz.value)
+  questionRoundIndex.value = Math.min(preferred, Math.max(0, currentRounds.value.length - 1))
   showQuestionModal.value = true
 }
 
@@ -3756,9 +3760,17 @@ onUnmounted(() => {
 /* Responsive Design */
 @media (max-width: 768px) {
   /* The quiz sidebar becomes a slide-out drawer over the questions panel, which takes the full
-     width; .btn-mobile-quiz-toggle opens/closes it and a backdrop closes it on outside tap. */
+     width; .btn-mobile-quiz-toggle opens/closes it and a backdrop closes it on outside tap.
+     A real flex column (not plain block) so the toggle button and the questions panel below it
+     correctly share the available height: .quiz-management keeps its height:100% from the base
+     rule above, unchanged, but under display:block that height was claimed entirely by
+     .questions-sidebar's own height:100% regardless of the toggle button stacked above it in normal
+     flow -- overflowing past the bottom by exactly the toggle's height, which an ancestor's
+     overflow-y:hidden then silently clipped (with more rounds growing the panel's content, and thus
+     how much got clipped, this is what made "Add Round" disappear once a quiz had enough rounds). */
   .quiz-management {
-    display: block;
+    display: flex;
+    flex-direction: column;
     position: relative;
   }
 
@@ -3767,6 +3779,7 @@ onUnmounted(() => {
     align-items: center;
     gap: 0.5rem;
     width: 100%;
+    flex-shrink: 0;
     margin-bottom: 0.75rem;
     padding: 0.65rem 0.9rem;
     background: var(--bg-overlay-10);
@@ -3820,7 +3833,9 @@ onUnmounted(() => {
   }
 
   .questions-sidebar {
-    padding: 0;
+    /* QuestionsList.vue adds a border-top here (its own ≤1024px rule); with no padding above the
+       header row, the New Question / shuffle buttons sit right against that line. */
+    padding: 1rem 0 0;
   }
 }
 

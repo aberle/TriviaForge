@@ -43,6 +43,7 @@ const SUITES = [
   { file: 'use-rounds-composable.e2e.js', browser: false },
   { file: 'csrf-cookie-security.e2e.js', browser: false },
   { file: 'theme-selection.e2e.js', browser: true },
+  { file: 'admin-default-theme.e2e.js', browser: true },
 ];
 
 const args = process.argv.slice(2);

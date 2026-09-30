@@ -96,6 +96,7 @@ TEST_BASE_URL=... node testing/e2e/admin-authoring.e2e.js   # a single suite
 | `use-rounds-composable` | The client `useRounds` composable against real sockets (no browser) |
 | `csrf-cookie-security` | The CSRF cookie's `Secure` flag tracks the actual connection (via `X-Forwarded-Proto`), not a static setting -- plain HTTP gets a non-Secure cookie (so phones on the LAN IP can store it) and it still round-trips a real mutation; a mismatched token is still rejected |
 | `theme-selection` | The "Murder!" theme is offered on the player page's selector, the display page's cycling toggle, and the admin Settings tab's theme grid; a logged-in admin's choice round-trips through the server (`GET`/`PUT /api/users/theme`) and an invalid theme value is rejected |
+| `admin-default-theme` | The admin-configurable "Default Theme for Player Clients" setting: saved via `GET`/`POST /api/options`, round-trips through the database, surfaced publicly via `GET /api/config`; a brand-new guest player/display page with no saved preference picks it up, a client with its own localStorage theme is never overridden, an invalid value is rejected, and it never leaks into the login/admin/presenter pages |
 
 Shared plumbing is in `e2e/lib/`: `harness.js` (suite runner, quiz/room/bot/page helpers, cleanup),
 `cdp.js` (a small Chrome DevTools Protocol client, no dependencies beyond Node 22) and `config.js`.

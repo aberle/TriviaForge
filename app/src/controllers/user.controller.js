@@ -11,10 +11,7 @@
 
 import { query } from '../config/database.js';
 import { NotFoundError, BadRequestError, ForbiddenError, ValidationError } from '../utils/errors.js';
-import { USER_ROLES } from '../config/constants.js';
-
-// Valid theme values
-const VALID_THEMES = ['light', 'dark', 'grey', 'system', 'murder'];
+import { USER_ROLES, VALID_THEMES } from '../config/constants.js';
 
 /**
  * List all users (admin only)

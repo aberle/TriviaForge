@@ -5,7 +5,7 @@
  * the full screen), reachable again via a toggle button, and dismissible by tapping its backdrop.
  */
 
-import { runSuite, Q, sleep } from './lib/harness.js';
+import { runSuite, Q, BASE, sleep } from './lib/harness.js';
 
 const TITLE = `Mobile Layout ${Date.now().toString(36)}`;
 
@@ -49,6 +49,16 @@ await runSuite(
     const overflow = await admin.eval(`document.documentElement.scrollWidth > document.documentElement.clientWidth + 2`);
     ok('selecting a quiz on mobile causes no horizontal page overflow', !overflow);
 
+    section('The "+ New Question" / shuffle button row has breathing room below the separator above it');
+    // .questions-sidebar grows a border-top on narrow screens (QuestionsList.vue); without a matching
+    // top padding, the button row sits with zero gap right against that line.
+    const headerGap = await admin.eval(`(() => {
+      const sidebar = document.querySelector('.questions-sidebar');
+      const header = document.querySelector('.questions-list-header');
+      return header.getBoundingClientRect().top - sidebar.getBoundingClientRect().top;
+    })()`);
+    ok('there is a visible gap between the border above and the button row below it', headerGap >= 12, headerGap);
+
     section('The toggle reopens the drawer; a backdrop tap closes it again');
     await admin.eval(`document.querySelector('.btn-mobile-quiz-toggle').click(); true`);
     await sleep(400);
@@ -70,6 +80,54 @@ await runSuite(
     })()`);
     ok('the mobile toggle button is hidden on desktop', desktopState.toggleHidden, JSON.stringify(desktopState));
     ok('the sidebar stays in normal flow (not a fixed drawer) on desktop', desktopState.sidebarPosition !== 'fixed', JSON.stringify(desktopState));
+
+    section('A long quiz name never makes the "Questions" header wrap across many lines');
+    // The quiz's full name is already shown (and truncates on its own) in the mobile drawer toggle
+    // button right above; repeating it in the Questions panel's own "Questions -- <name>" heading,
+    // squeezed next to "+ New Question" and the shuffle buttons, used to wrap across many short lines.
+    const LONG_TITLE = 'This Is A Really Long Quiz Title That Should Not Wrap Awkwardly On A Narrow Phone Screen';
+    const longQuiz = await env.createQuiz({ title: LONG_TITLE, questions: [Q.mc('Q1', ['a', 'b'], 0)] });
+    await admin.goto(`${BASE}/admin`);
+    await admin.waitFor(`[...document.querySelectorAll('.quiz-item')].some(q => q.innerText.includes(${JSON.stringify(LONG_TITLE.slice(0, 20))}))`, { timeout: 8000 });
+    await admin.eval(`[...document.querySelectorAll('.quiz-item')].find(q => q.innerText.includes(${JSON.stringify(LONG_TITLE.slice(0, 20))})).click(); true`);
+    await admin.waitFor(`!!document.querySelector('.questions-list-header h2')`);
+    await sleep(400);
+    const headerInfo = await admin.eval(`(() => {
+      const h2 = document.querySelector('.questions-list-header h2');
+      const toggle = document.querySelector('.btn-mobile-quiz-toggle span');
+      const r = h2.getBoundingClientRect();
+      return { height: r.height, text: h2.innerText, toggleShowsName: toggle?.innerText.includes(${JSON.stringify(LONG_TITLE.slice(0, 15))}) };
+    })()`);
+    ok('the header stays a single line tall, even with a very long quiz name', headerInfo.height < 34, JSON.stringify(headerInfo));
+    ok('...because the redundant name is dropped there on mobile (it just says "Questions")', headerInfo.text === 'Questions', headerInfo.text);
+    ok('...and the full name is still visible, in the drawer toggle button above, so nothing is lost', headerInfo.toggleShowsName, JSON.stringify(headerInfo));
+
+    section('Adding a round never clips the questions panel\'s content below the bottom of the screen');
+    // The mobile toggle button sits above the questions panel in normal document flow; the panel must
+    // actually SHRINK to the space left under it, not keep claiming its old (pre-toggle-button) full
+    // height and silently overflow past the screen's edge -- which is exactly what used to make
+    // "Add Round" vanish once a quiz had enough rounds for a newly-added (auto-expanded) one to push
+    // the panel's real content height past the bottom.
+    const roundsQuiz = await env.createQuiz({
+      title: `Mobile Rounds ${TITLE}`,
+      rounds: [{ title: 'Round A' }, { title: 'Round B' }, { title: 'Round C' }],
+      questions: [Q.mc('A question one here', ['x', 'y'], 0, 0)],
+    });
+    await admin.goto(`${BASE}/admin`);
+    await admin.waitFor(`[...document.querySelectorAll('.quiz-item')].some(q => q.innerText.includes(${JSON.stringify(`Mobile Rounds ${TITLE}`)}))`, { timeout: 8000 });
+    await admin.eval(`[...document.querySelectorAll('.quiz-item')].find(q => q.innerText.includes(${JSON.stringify(`Mobile Rounds ${TITLE}`)})).click(); true`);
+    await admin.waitFor(`document.querySelectorAll('.round-header').length === 3`);
+    await sleep(400);
+    await admin.eval(`document.querySelector('.btn-add-round').click(); true`); // the 4th round auto-expands
+    await sleep(400);
+
+    const panelBottom = await admin.eval(`document.querySelector('.questions-sidebar').getBoundingClientRect().bottom`);
+    ok('the questions panel\'s own box stays within the screen, not overflowing past it', panelBottom <= 844 + 2, panelBottom);
+
+    await admin.eval(`(() => { const l = document.querySelector('.questions-list'); l.scrollTop = l.scrollHeight; return true; })()`);
+    await sleep(300);
+    const addRoundRect = await admin.eval(`(() => { const r = document.querySelector('.btn-add-round').getBoundingClientRect(); return { bottom: r.bottom, visible: r.top >= 0 && r.bottom <= window.innerHeight }; })()`);
+    ok('...and scrolling the panel actually reaches the "Add Round" button (it is not stuck off-screen)', addRoundRect.visible, JSON.stringify(addRoundRect));
 
     ok('no uncaught errors', admin.realErrors().length === 0, admin.realErrors().join(' | '));
   }
