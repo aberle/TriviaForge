@@ -372,7 +372,14 @@ const broadcastQuizResults = (roomCode, room) => {
 
 // Public, non-sensitive server settings the UI needs before anyone logs in
 app.get('/api/config', (req, res) => {
-  res.json({ guestOnly: env.guestOnly, soloMode: env.soloMode, appName: env.appName, defaultTheme: quizOptions.defaultPlayerTheme });
+  res.json({
+    guestOnly: env.guestOnly,
+    soloMode: env.soloMode,
+    appName: env.appName,
+    logoUrl: env.logoUrl,
+    faviconUrl: env.faviconUrl,
+    defaultTheme: quizOptions.defaultPlayerTheme,
+  });
 });
 
 // CSRF token endpoint - GET is excluded from CSRF protection
@@ -974,6 +981,15 @@ const io = new Server(server, {
   pingTimeout: 60000,    // 60 seconds - detect dead sockets within ~1 minute
   pingInterval: 25000    // 25 seconds - standard keepalive interval
 });
+
+// The player entry for a socket. A reconnected socket only becomes a room player once its joinRoom is
+// processed, and a round action can arrive before that; fall back to the PlayerID the socket presented
+// (the identity joinRoom already uses to recognise a returning player).
+const playerForSocket = (room, socket) => {
+  if (room.players[socket.id]) return room.players[socket.id];
+  const playerID = socket.handshake.auth?.playerID;
+  return playerID ? Object.values(room.players).find((p) => p.playerID === playerID) : undefined;
+};
 
 // Every socket (guest, player, presenter, admin) connects through here, so this must never reject a
 // connection -- it only tags admin sessions (by the same session-token lookup requireAuth uses for
@@ -3016,7 +3032,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    roundService.saveDraft(room, room.players[socket.id], roundIndex, answers);
+    roundService.saveDraft(room, playerForSocket(room, socket), roundIndex, answers);
   });
 
   // Player submits the open round (they can submit again to change their answers until it ends)
@@ -3030,7 +3046,7 @@ io.on('connection', (socket) => {
     const room = roomService.liveRooms[roomCode];
     if (!room) return;
 
-    const result = roundService.submitRound(room, room.players[socket.id], roundIndex, answers);
+    const result = roundService.submitRound(room, playerForSocket(room, socket), roundIndex, answers);
     if (result.ok) {
       socket.emit('roundSubmitted', { roundIndex, success: true });
       roundService.emitProgress(roomCode, room);

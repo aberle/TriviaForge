@@ -36,6 +36,11 @@
   color: var(--info-light);
 }
 
+.navbar-brand .brand-logo {
+  height: 20px;
+  width: auto;
+}
+
 /* Link groups */
 .navbar-links {
   display: flex;

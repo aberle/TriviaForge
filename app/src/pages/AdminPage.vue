@@ -756,6 +756,16 @@ const resyncAfterReconnect = () => {
   }
 }
 
+// Coming back to the window after being away (a laptop waking, a phone unlocking): ask the server whether
+// this session still exists, rather than finding out on the next button press. A 401 is handled centrally
+// (useApi.js logs out and sends the user to the login page), so the request itself is all that's needed.
+// Deliberately not polled: a poll would keep the sliding session alive for as long as the tab stays open.
+// A tab that becomes visible already resyncs (which fails with a 401 if the session has ended); a window that
+// regains focus with no visibility change needs this check too.
+const checkSessionStillValid = () => {
+  if (authStore.isLoggedIn) get('/api/auth/me').catch(() => {})
+}
+
 const handleVisibilityChange = () => {
   if (document.visibilityState === 'visible') resyncAfterReconnect()
 }
@@ -2329,12 +2339,14 @@ onMounted(() => {
   adminSocket.on('quizChanged', handleQuizChanged)
   adminSocket.on('connect', resyncAfterReconnect)
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('focus', checkSessionStillValid)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', closeMenuIfOutside)
   document.removeEventListener('touchstart', closeMenuIfOutside)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('focus', checkSessionStillValid)
   adminSocket.off('quizChanged', handleQuizChanged)
   adminSocket.off('connect', resyncAfterReconnect)
   document.removeEventListener('mousemove', handleMouseMove)

@@ -28,6 +28,8 @@ const readCachedString = (key, fallback) => {
 
 const soloEnabled = ref(readCached('soloMode'))
 const appName = ref(readCachedString('appName', DEFAULT_APP_NAME))
+const logoUrl = ref(readCachedString('logoUrl', ''))
+const faviconUrl = ref(readCachedString('faviconUrl', ''))
 let loading = null
 
 // The browser tab title, exactly as index.html set it (once, before anything here can touch it), so
@@ -42,6 +44,15 @@ const applyDocumentTitle = () => {
 }
 applyDocumentTitle()
 
+// index.html's <link rel="icon"> always points at the default /favicon.ico; swapped to a
+// deployment-configured one once FAVICON_URL is known, left alone otherwise.
+const applyFavicon = () => {
+  if (typeof document === 'undefined' || !faviconUrl.value) return
+  const link = document.querySelector('link[rel="icon"]')
+  if (link) link.href = faviconUrl.value
+}
+applyFavicon()
+
 export function loadServerConfig() {
   if (!loading) {
     loading = fetch('/api/config')
@@ -49,10 +60,15 @@ export function loadServerConfig() {
       .then((data) => {
         soloEnabled.value = data.soloMode === true
         appName.value = data.appName || DEFAULT_APP_NAME
+        logoUrl.value = data.logoUrl || ''
+        faviconUrl.value = data.faviconUrl || ''
         applyDocumentTitle()
+        applyFavicon()
         try {
           localStorage.setItem('soloMode', String(soloEnabled.value))
           localStorage.setItem('appName', appName.value)
+          localStorage.setItem('logoUrl', logoUrl.value)
+          localStorage.setItem('faviconUrl', faviconUrl.value)
         } catch {
           // storage unavailable: the values just aren't remembered
         }
@@ -67,5 +83,5 @@ export function loadServerConfig() {
 
 export function useServerConfig() {
   loadServerConfig()
-  return { soloEnabled, appName }
+  return { soloEnabled, appName, logoUrl, faviconUrl }
 }

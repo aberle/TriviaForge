@@ -53,3 +53,15 @@ variable "app_name" {
   type        = string
   default     = "Geeks Who Stink"
 }
+
+variable "logo_url" {
+  description = "Sets LOGO_URL in the deployed app's .env -- a logo image shown on the login page and the player navbar. Empty means no logo (the default icon is used)."
+  type        = string
+  default     = ""
+}
+
+variable "favicon_url" {
+  description = "Sets FAVICON_URL in the deployed app's .env -- the browser tab icon. Empty means the default /favicon.ico."
+  type        = string
+  default     = ""
+}

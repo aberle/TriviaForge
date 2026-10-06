@@ -40,6 +40,8 @@ resource "aws_instance" "app" {
     timezone        = var.timezone
     guest_only_mode = var.guest_only_mode
     app_name        = var.app_name
+    logo_url        = var.logo_url
+    favicon_url     = var.favicon_url
   })
   user_data_replace_on_change = false
 

@@ -2,7 +2,8 @@
   <nav class="navbar">
     <!-- Brand -->
     <div class="navbar-brand">
-      <AppIcon name="users" size="sm" class="brand-icon" />
+      <img v-if="logoUrl" :src="logoUrl" alt="" class="brand-logo" />
+      <AppIcon v-else name="users" size="sm" class="brand-icon" />
       <!-- In a room the bar shows the quiz's name; otherwise the app's -->
       <span class="brand-title" :title="brandTitle">{{ brandTitle }}</span>
     </div>
@@ -115,7 +116,7 @@ import AppIcon from '@/components/common/AppIcon.vue';
 import { useAuthStore } from '@/stores/auth.js';
 import { useServerConfig } from '@/composables/useServerConfig.js'
 
-const { soloEnabled, appName } = useServerConfig()
+const { soloEnabled, appName, logoUrl } = useServerConfig()
 
 const route = useRoute();
 const authStore = useAuthStore();

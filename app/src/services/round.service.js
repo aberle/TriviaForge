@@ -30,8 +30,6 @@ export const TIMER_GRACE_MS = 2000;
 /** Same bound as live short-answer submissions (see the submitAnswer handler in server.js). */
 const MAX_TEXT_ANSWER_LENGTH = 100;
 
-const ACTIVE_STATES = ['connected', 'away', 'warning'];
-
 /**
  * RoundService - Manages round state, timers and events for live rooms
  */
@@ -574,8 +572,10 @@ class RoundService {
    */
   getProgress(room) {
     const state = room.rounds;
+    // Every player in the room owes this round an answer, including one whose phone is locked or whose
+    // connection has dropped: leaving them out made "4/4" appear while the fifth had not answered yet
     const active = Object.values(room.players)
-      .filter((p) => !p.isSpectator && ACTIVE_STATES.includes(p.connectionState))
+      .filter((p) => !p.isSpectator)
       .map((p) => p.username);
     const submittedUsernames = Object.keys(state.submitted);
 

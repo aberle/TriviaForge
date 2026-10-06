@@ -957,7 +957,9 @@ const setupSocketListeners = () => {
   // Handle socket connection
   socketInstance.on('connect', () => {
     console.log('[PRESENTER] Socket connected')
-    // Presenter manages multiple rooms from a list - they'll click to view the room they want
+    // A reconnect gives the socket a new id, and the server only moves the room's presenter onto a socket
+    // when told to (viewRoom). Re-open the room being shown, or every presenter action is refused.
+    if (currentRoomCode.value) viewRoom(currentRoomCode.value)
   })
 
   // Resuming a session that is already live: just open that room

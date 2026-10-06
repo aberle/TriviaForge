@@ -738,6 +738,8 @@ Environment variables can be set in multiple ways (listed by precedence, highest
 | `SOLO_MODE` | Enable Solo Play (self-study without a presenter). When `false`, the Solo links, page and `/api/solo` endpoints are unavailable | `false` | No |
 | `TZ` | Timezone for timestamps | `America/New_York` | No |
 | `APP_NAME` | Application name | `TriviaForge` | No |
+| `LOGO_URL` | Logo image shown on the login page and the player navbar (any URL or path) | None (falls back to the default icon) | No |
+| `FAVICON_URL` | Browser tab icon (any URL or path) | None (uses the default `/favicon.ico`) | No |
 | `SOCKET_RATE_WINDOW_MS` | Socket.IO rate limit window (ms) | `60000` (1 min) | No |
 | `SOCKET_JOIN_LIMIT` | Max join attempts per IP per window | `50` | No |
 | `SOCKET_ANSWER_LIMIT` | Max answer submissions per IP per window | `300` | No |

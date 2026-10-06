@@ -49,6 +49,8 @@ TZ=${timezone}
 DOMAIN_NAME=${domain_name}
 GUEST_ONLY_MODE=${guest_only_mode}
 APP_NAME=${app_name}
+LOGO_URL=${logo_url}
+FAVICON_URL=${favicon_url}
 ENVEOF
 chmod 600 .env
 

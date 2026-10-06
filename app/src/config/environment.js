@@ -50,6 +50,11 @@ export const env = {
   // Shown in place of "TriviaForge" in the navbars, the login/waiting screens and the browser tab title
   appName: process.env[ENV_VARS.APP_NAME]?.trim() || 'TriviaForge',
 
+  // Optional deployment branding: a logo image (shown on the login page and the player navbar) and a
+  // favicon, both given as plain URLs (relative or absolute). Empty means "use the defaults".
+  logoUrl: process.env[ENV_VARS.LOGO_URL]?.trim() || '',
+  faviconUrl: process.env[ENV_VARS.FAVICON_URL]?.trim() || '',
+
   // Database
   databaseUrl: process.env[ENV_VARS.DATABASE_URL] || 'postgres://trivia:trivia@db:5432/trivia',
 
