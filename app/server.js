@@ -1070,25 +1070,6 @@ const playerSessions = new Map(); // Map<playerID, { username, socketId, roomCod
 const socketToPlayer = new Map(); // Map<socketId, playerID> - Reverse mapping for O(1) lookups
 
 /**
- * Check if a PlayerID is already connected (multi-tab detection)
- * @param {string} playerID - Player Session ID
- * @param {string} currentSocketId - Current socket.id attempting to connect
- * @returns {boolean} - True if PlayerID is already connected with a DIFFERENT socketId
- */
-const isPlayerIDAlreadyConnected = (playerID, currentSocketId) => {
-  const playerSession = playerSessions.get(playerID);
-  if (!playerSession) return false;
-
-  // Check if the existing socketId is different AND still connected
-  if (playerSession.socketId !== currentSocketId) {
-    const existingSocket = io.sockets.sockets.get(playerSession.socketId);
-    return existingSocket && existingSocket.connected;
-  }
-
-  return false;
-};
-
-/**
  * Register or update a player session
  * @param {string} playerID - Player Session ID
  * @param {string} socketId - Current socket.id
@@ -2156,14 +2137,12 @@ io.on('connection', (socket) => {
       });
     }
 
-    // PHASE 2: Multi-tab detection
-    if (playerID && isPlayerIDAlreadyConnected(playerID, socket.id)) {
-      if (DEBUG_ENABLED) {
-        console.log(`[MULTI-TAB BLOCKED] PlayerID ${playerID} already connected in another tab`);
-      }
-      socket.emit('roomError', 'Already connected in another tab. Please close other tabs and try again.');
-      return;
-    }
+    // A second tab (or a reconnect whose old socket hasn't been detected as dead yet -- a backgrounded
+    // phone's connection can sit "connected" from the server's perspective well past when the user
+    // actually left) used to be flatly refused here with "Already connected in another tab", with no
+    // way back in short of waiting out socket.io's own ping timeout. The reconnection handling below
+    // (by PlayerID, scoped to this room) already exists specifically to force-disconnect a stale old
+    // socket and hand the room over to the new one; let every join reach it instead of refusing first.
 
     const room = roomService.liveRooms[roomCode];
     if (!room) {

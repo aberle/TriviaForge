@@ -395,6 +395,22 @@ const cancelReconnect = () => {
   localStorage.removeItem('trivia_last_room')
 }
 
+// Persists what's needed to silently rejoin this room later. Originally this was only written from
+// a 'beforeunload' listener, which covers a real navigation/close but NOT a phone backgrounded and left
+// idle: iOS in particular drops a suspended tab's page from memory without ever firing 'beforeunload' or
+// any other JS event, so a tab "reopened" later is actually a fresh page load with nothing to rejoin
+// from. Writing this as soon as we're confirmed in the room, and refreshing it on every subsequent
+// playerListUpdate, means there's always a recent save to fall back to regardless of how the tab went away.
+const persistLastRoom = () => {
+  if (!inRoom.value || !currentRoomCode.value) return
+  localStorage.setItem('trivia_last_room', JSON.stringify({
+    roomCode: currentRoomCode.value,
+    username: currentUsername.value,
+    displayName: currentDisplayName.value,
+    timestamp: Date.now()
+  }))
+}
+
 // Form inputs
 const usernameInput = ref('')
 const displayNameInput = ref('')
@@ -817,6 +833,8 @@ const setupSocketListeners = () => {
     statusMessage.value = `${nonSpectatorCount} player(s) in room`
     // Save room to recent rooms only on successful join
     saveRecentRoom(roomCode)
+    // Keep the auto-rejoin save fresh for as long as we're actually in the room (see persistLastRoom)
+    persistLastRoom()
 
     // Request wake lock to keep screen on during game
     if (wakeLock.isSupported.value && !wakeLock.isActive.value) {
@@ -1277,19 +1295,19 @@ onMounted(() => {
     updateConnectionState('connected')
   }
 
-  // Auto-rejoin system: Save room state on page unload
+  // Auto-rejoin system: save room state on page unload. This path is a backstop -- persistLastRoom()
+  // already keeps the save fresh while the player is in the room -- but costs nothing to keep, since
+  // a real close/navigation is exactly the case 'beforeunload' is reliable for.
   const handleBeforeUnload = () => {
-    if (inRoom.value && currentRoomCode.value) {
-      localStorage.setItem('trivia_last_room', JSON.stringify({
-        roomCode: currentRoomCode.value,
-        username: currentUsername.value,
-        displayName: currentDisplayName.value,
-        timestamp: Date.now()
-      }))
-      console.log('[CONNECTION] Saved room state for auto-rejoin')
-    }
+    persistLastRoom()
+    if (inRoom.value && currentRoomCode.value) console.log('[CONNECTION] Saved room state for auto-rejoin')
   }
   window.addEventListener('beforeunload', handleBeforeUnload)
+  // 'pagehide' is the mobile-reliable counterpart: iOS Safari fires it when a tab is backgrounded and may
+  // later be suspended or evicted from memory without ever firing 'beforeunload' or any other JS event --
+  // which is exactly the "idle for a while, reopen the tab" case this is for.
+  const handlePageHide = () => persistLastRoom()
+  window.addEventListener('pagehide', handlePageHide)
 
   // Auto-rejoin system: Check for saved session on mount
   const lastRoom = localStorage.getItem('trivia_last_room')
