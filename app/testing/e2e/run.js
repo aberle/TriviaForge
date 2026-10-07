@@ -21,6 +21,7 @@ const SUITES = [
   { file: 'round-unanswered.e2e.js', browser: true },
   { file: 'results-and-standings.e2e.js', browser: true },
   { file: 'join-and-identity.e2e.js', browser: true },
+  { file: 'player-idle-rejoin.e2e.js', browser: true },
   { file: 'reconnect.e2e.js', browser: true },
   { file: 'admin-authoring.e2e.js', browser: true },
   { file: 'admin-quiz-management.e2e.js', browser: true },

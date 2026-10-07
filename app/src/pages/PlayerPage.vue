@@ -367,16 +367,18 @@ let urlRoomPending = null // a ?room= link waiting to hear whether this device a
 // Refresh: if this device was in a room a moment ago the page rejoins it automatically. Decide that
 // NOW, before the first render, so the player sees "Reconnecting..." instead of the landing page
 // flashing by. A link to a different room (QR code) is not a reconnect.
-const REJOIN_WINDOW_MINUTES = 5
 const RECONNECT_GIVE_UP_MS = 12000
 // A room that disappears while we're in it (the server restarted) may be reopened by the presenter
 // shortly: keep asking this often, for this long, before giving up
 const ROOM_WAIT_RETRY_MS = 3000
 const ROOM_WAIT_GIVE_UP_MS = 10 * 60 * 1000
+// Whether a saved session is still worth rejoining is the SERVER's call (it rejects a rejoin to a room
+// that's gone), not a guess based on how long ago the tab closed -- a quiz with long gaps between rounds
+// routinely leaves a player idle past any fixed cutoff while the room is still very much running.
 const initialRejoin = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem('trivia_last_room') || 'null')
-    if (!saved || !((Date.now() - saved.timestamp) / 60000 < REJOIN_WINDOW_MINUTES)) return null
+    if (!saved) return null
     const urlRoom = route.query.room ? String(route.query.room).toUpperCase() : null
     if (urlRoom && urlRoom !== String(saved.roomCode).toUpperCase()) return null
     return saved
@@ -1314,9 +1316,13 @@ onMounted(() => {
       if (urlRoom && urlRoom !== String(roomCode).toUpperCase()) {
         console.log(`[CONNECTION] Opened a link to room ${urlRoom} - discarding saved session for room ${roomCode}`)
         localStorage.removeItem('trivia_last_room')
-      } else if (ageMinutes < 5) {
-        console.log(`[CONNECTION] Found recent session (${ageMinutes.toFixed(1)} min old) - attempting auto-rejoin to room ${roomCode} as ${username}/${displayName}`)
-        debugLog('Session is recent - will attempt auto-rejoin', {
+      } else {
+        // Whether the room is still worth rejoining is the SERVER's call, not a guess based on how long
+        // ago the tab closed: a quiz with long gaps between rounds (reviewing answers, chatting) routinely
+        // leaves a player idle well past any fixed cutoff while the room is still very much running. A
+        // rejoin the server rejects ('Room not found.') already falls back to the landing page below.
+        console.log(`[CONNECTION] Found a saved session (${ageMinutes.toFixed(1)} min old) - attempting auto-rejoin to room ${roomCode} as ${username}/${displayName}`)
+        debugLog('Attempting auto-rejoin', {
           roomCode,
           username,
           displayName,
@@ -1358,12 +1364,6 @@ onMounted(() => {
             })
           }
         }, 10000)
-      } else {
-        console.log(`[CONNECTION] Session too old (${ageMinutes.toFixed(1)} min) - clearing`)
-        debugLog('Session too old - clearing localStorage', {
-          ageMinutes: ageMinutes.toFixed(1)
-        })
-        localStorage.removeItem('trivia_last_room')
       }
     } catch (err) {
       console.error('[CONNECTION] Error parsing saved room state:', err)
