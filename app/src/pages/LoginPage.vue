@@ -186,10 +186,21 @@ const showBackupCodeInput = ref(false)
 const backupCode = ref('')
 const rememberDevice = ref(false)
 
-// Check if already authenticated
+// Check if already authenticated. A token sitting in localStorage doesn't mean it's still valid
+// server-side -- it can have expired, or been invalidated by a password change or a server restart,
+// since the last time this browser used it. A brand-new tab used to trust it blindly and show "Access
+// Granted" for a session that was actually already dead, only to have the first real action (opening
+// Presenter) hit a 401 and bounce to a login prompt instead. Confirm it with the server first; a
+// rejection's 401 is handled centrally (useApi.js logs out and redirects here), the same path
+// AdminPage.vue's own return-to-the-tab check already uses.
 onMounted(async () => {
   if (authStore.token && authStore.userRole === 'admin') {
-    isLoggedIn.value = true
+    try {
+      await get('/api/auth/me')
+      isLoggedIn.value = true
+    } catch {
+      // The 401 interceptor already logged out and is redirecting; nothing else to do here
+    }
   } else {
     // Clear any stale auth
     authStore.logout()
