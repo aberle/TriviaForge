@@ -16,22 +16,55 @@
  *    the server used to flatly refuse the new tab's join with "Already connected in another tab" for
  *    as long as the old socket looked connected (up to socket.io's own ~85s ping timeout), rather than
  *    reaching the reconnection logic that force-disconnects the stale socket and hands the room over.
+ *
+ * Even with both of those fixed, a real phone (same tab, never reloaded, Chrome not Safari) left idle
+ * for 15+ minutes still landed on the join screen. The remaining cause: a genuine socket disconnect
+ * started a client-side 30s-then-2min-then-5min chain that gave up and called the exact same code as
+ * pressing "Leave Room" -- clearing the saved session and resetting local state -- purely because of
+ * how long the socket had been down, regardless of whether the room was still running. Coming back
+ * after that had already fired, in the SAME tab, had nothing left to rejoin from: no reload happens, so
+ * the localStorage fallback never gets a chance to run either. That auto-leave is gone; a rejoin the
+ * server actually rejects is what falls back to the join screen now, same as the first fix above.
+ * Separately, the logic that forces a reconnect+rejoin on returning to the tab was iOS-only; Android
+ * only kicked off a reconnect attempt without ever following through with the rejoin, and anything
+ * else (desktop Chrome, Firefox, Samsung Internet...) had no forced-reconnect path at all. One path now
+ * runs for every platform.
  */
 
 import { runSuite, Q, BASE, sleep } from './lib/harness.js';
 
-// Blocks new WebSocket/XHR connection attempts once armed, redirecting them to an unreachable address.
+// Blocks new WebSocket/XHR connection attempts once armed, redirecting them to an unreachable address
+// (so a genuinely closed socket can't reconnect while "blocked"). Also compresses the app's own
+// human-scale setTimeout delays (the 30s/2min visibility-debounce chain) so a test doesn't need to
+// wait minutes of real wall-clock time, and lets a test fake document.hidden without actually
+// backgrounding the OS-level tab (not something headless Chrome can be made to do from script).
 // Installed before navigation (survives it) so it's in place for the room's very first socket connect.
-// Used to simulate a backgrounded phone: the existing socket is left open (never closed) but goes
-// unresponsive, which is different from -- and not reproduced by -- a clean tab close.
 const TRANSPORT_BLOCK_SHIM = `
   window.__blockTransport = false;
+  window.__sockets = [];
   const OrigWebSocket = window.WebSocket;
   window.WebSocket = function (url, ...args) {
     const actualUrl = window.__blockTransport ? 'ws://127.0.0.1:1/blocked' : url;
-    return new OrigWebSocket(actualUrl, ...args);
+    const ws = new OrigWebSocket(actualUrl, ...args);
+    window.__sockets.push(ws);
+    return ws;
   };
   window.WebSocket.prototype = OrigWebSocket.prototype;
+
+  // Compress ONLY the exact delays the visibility/disconnect debounce chain uses (30s, 2min, 5min) --
+  // not every long setTimeout indiscriminately, which also catches socket.io's own internal timers and
+  // breaks the connection outright (found the hard way: a blanket "delay > 1000" rule never even
+  // connects). 5min is included so this is a real mutation-testable guard against the old behavior
+  // (which took a full 5 real minutes to fire) reappearing, not just a check of the new behavior.
+  const origSetTimeout = window.setTimeout;
+  window.setTimeout = function (fn, delay, ...args) {
+    const compressed = [30000, 2 * 60 * 1000, 5 * 60 * 1000].includes(delay) ? delay / 60 : delay;
+    return origSetTimeout(fn, compressed, ...args);
+  };
+
+  let __hidden = false;
+  Object.defineProperty(document, 'hidden', { get: () => __hidden });
+  window.__setHidden = (value) => { __hidden = value; document.dispatchEvent(new Event('visibilitychange')); };
 `;
 
 await runSuite(
@@ -88,6 +121,32 @@ await runSuite(
     );
     await camReturns.closeTab();
     await cam.closeTab();
+
+    section('Same tab, never reloaded, genuinely disconnected a long time: still gets back in, not forgotten');
+    const dee = await env.open(`${BASE}/login`, { width: 390, height: 844, mobile: true });
+    await dee.eval(`localStorage.removeItem('trivia_last_room'); true`);
+    await dee.send('Page.addScriptToEvaluateOnNewDocument', { source: TRANSPORT_BLOCK_SHIM });
+    await dee.goto(`${BASE}/player`);
+    await env.joinForm(dee, room, 'Dee');
+    await dee.waitText('Waiting for Question');
+
+    // A real disconnect (closes the live socket), with reconnection attempts blocked so it stays down
+    // -- then "page hidden", standing in for the phone being put away
+    await dee.eval(`window.__blockTransport = true; window.__sockets[window.__sockets.length - 1]?.close(); true`);
+    await dee.eval(`window.__setHidden(true); true`);
+    // Let the (compressed) away -> disconnected -> auto-leave chain run its full course while still
+    // hidden and disconnected -- 30s + 2min + 5min, compressed by 60x, plus margin
+    await sleep(9000);
+
+    // The phone comes back: visible again, and the network (eventually) available again
+    await dee.eval(`window.__blockTransport = false; window.__setHidden(false); true`);
+    await dee.waitText('Waiting for Question', { timeout: 8000 });
+    ok(
+      'back in the room on its own, without ever needing the join form',
+      !(await dee.eval(`!!document.querySelector('#roomCodeManual')`))
+    );
+    ok('the saved session survived the whole thing (never wiped by the old auto-leave)', !!(await dee.eval(`localStorage.getItem('trivia_last_room')`)));
+    await dee.closeTab();
 
     section('The room is genuinely gone: still falls back to the join form, rather than hanging');
     env.presenter.emit('closeRoom', { roomCode: room, userId: env.login.user.id || 1, isRootAdmin: true });

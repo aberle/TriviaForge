@@ -563,65 +563,36 @@ const handleVisibilityChange = () => {
       console.log(`[CONNECTION] Player missed ${missedQuestions.length} question(s) while away`)
     }
 
-    // iOS Safari-specific: Force immediate reconnection
-    if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      console.log('[CONNECTION] iOS device detected - forcing immediate reconnection')
+    // Returning from background never tells us in advance whether the socket's connection survived --
+    // it depends on the OS, the browser, and how long it's been. This used to branch on the user agent:
+    // an iOS-specific block that forced a connect and waited for it before rejoining, a Android-Chrome
+    // branch that kicked off a reconnect but never followed through with a rejoin at all, and a generic
+    // fallback for everyone else that only rejoined if the socket happened to already be connected in
+    // this same synchronous tick (never, in practice, right after a real disconnect). Every platform but
+    // iOS could come back from a long background spell "connected" but never actually back in the room.
+    // One path for every platform: force a connect attempt, then rejoin as soon as it succeeds.
+    if (!socket.isConnected.value) socket.connect()
 
-      if (!socket.isConnected.value) {
-        socket.connect()
-      }
-
-      // Wait for connection, then rejoin room if needed
-      if (currentRoomCode.value && currentUsername.value && currentDisplayName.value) {
-        const rejoinInterval = setInterval(() => {
-          if (socket.isConnected.value) {
-            clearInterval(rejoinInterval)
-            emitJoinRoom(currentRoomCode.value, currentUsername.value, currentDisplayName.value, 'iOS visibility change')
-            updateConnectionState('connected')
-          }
-        }, 100)
-
-        // Safety timeout - clear interval after 3 seconds
-        setTimeout(() => clearInterval(rejoinInterval), 3000)
-      }
-
-      // Re-request wake lock for iOS
-      if (wakeLock.isSupported.value && !wakeLock.isActive.value) {
-        wakeLock.requestWakeLock()
-      }
-
-      return // Skip normal reconnection logic for iOS
-    }
-
-    // Android Chrome: Check connection after resume delay
-    if (/Android.*Chrome/i.test(navigator.userAgent)) {
-      console.log('[CONNECTION] Android Chrome detected - delayed reconnection check')
-      setTimeout(() => {
-        if (!socket.isConnected.value) {
-          socket.connect()
+    if (currentRoomCode.value && currentUsername.value && currentDisplayName.value) {
+      const rejoinInterval = setInterval(() => {
+        if (socket.isConnected.value) {
+          clearInterval(rejoinInterval)
+          emitJoinRoom(currentRoomCode.value, currentUsername.value, currentDisplayName.value, 'visibility change')
+          updateConnectionState('connected')
         }
-      }, 500)
+      }, 100)
+
+      // Safety timeout - stop polling after 3 seconds (the regular 'connect' handler rejoins too,
+      // so a slower connection still gets there, just without this poll clearing the banner early)
+      setTimeout(() => clearInterval(rejoinInterval), 3000)
+    } else if (connectionState.value === 'warning') {
+      // Was rapid-switching - just log
+      console.log('[CONNECTION] Returned while in warning state')
     }
 
     // Re-request wake lock (for all devices)
     if (wakeLock.isSupported.value && !wakeLock.isActive.value) {
       wakeLock.requestWakeLock()
-    }
-
-    // Handle return from away/disconnected state (standard flow for non-iOS)
-    if (connectionState.value === 'disconnected') {
-      // Was truly disconnected - need to rejoin room
-      if (currentRoomCode.value && currentUsername.value && currentDisplayName.value && socket.isConnected.value) {
-        emitJoinRoom(currentRoomCode.value, currentUsername.value, currentDisplayName.value, 'visibility change (disconnected)')
-        updateConnectionState('connected')
-      }
-    } else if (connectionState.value === 'away') {
-      // Was only away - just update state (still in room server-side)
-      console.log('[CONNECTION] Returned from away - updating state')
-      updateConnectionState('connected')
-    } else if (connectionState.value === 'warning') {
-      // Was rapid-switching - just log
-      console.log('[CONNECTION] Returned while in warning state')
     }
   } else {
     // Page became hidden - wait 30 seconds before marking as "away"
@@ -638,18 +609,15 @@ const handleVisibilityChange = () => {
         console.log('[CONNECTION] Page still hidden after 30s - marking as away')
         updateConnectionState('away')
 
-        // Set timeout for 2 minutes to mark as disconnected
+        // Set timeout for 2 minutes to mark as disconnected. This is a status badge only -- it used to
+        // also start a further 5-minute timer that gave up and left the room, a client-side guess about
+        // how long is too long that's wrong for exactly the case this is for (idle between rounds, well
+        // past 7 minutes hidden, with the room still very much running). Whether the room is still worth
+        // rejoining is the server's call: a rejoin it rejects is what falls back to the join screen, not
+        // a local timeout -- the same reasoning the saved-session age cutoff was already dropped for.
         disconnectTimeout.value = setTimeout(() => {
           console.log('[CONNECTION] Away timeout (2 min) - marking as disconnected')
           updateConnectionState('disconnected')
-
-          // Set timeout for 5 minutes to fully remove from room
-          setTimeout(() => {
-            console.log('[CONNECTION] Disconnect timeout (5 min) - leaving room')
-            if (inRoom.value) {
-              handleLeaveRoom()
-            }
-          }, 5 * 60 * 1000) // 5 minutes after disconnected state
         }, 2 * 60 * 1000) // 2 minutes after away state
       } else {
         console.log('[CONNECTION] Page became visible again - canceling away state')
@@ -754,15 +722,11 @@ const setupSocketListeners = () => {
     // Show connection lost banner
     showConnectionLostBanner.value = true
     reconnectionAttempts.value = 0
-
-    // Set timeout for 5 minutes to fully remove from room
     clearTimeout(disconnectTimeout.value)
-    disconnectTimeout.value = setTimeout(() => {
-      console.log('[CONNECTION] Disconnect timeout (5 min) - leaving room')
-      if (inRoom.value) {
-        handleLeaveRoom()
-      }
-    }, 5 * 60 * 1000) // 5 minutes
+    // No longer auto-leaves the room after a few minutes of being disconnected -- see the comment by
+    // the other disconnectTimeout use (the 'page hidden' chain) for why that guess was dropped. The
+    // banner stays up and socket.io (plus the visibility-triggered reconnect) keep retrying regardless
+    // of how long that takes; a rejoin the server actually rejects is what falls back to the join screen.
   })
 
   socket.on('reconnect_attempt', (attempt) => {
